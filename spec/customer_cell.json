@@ -1,0 +1,57 @@
+{
+  "version": "advaitic-systems-cell-v1",
+  "purpose": "Synthetic assignment cell; not confidential customer CAD",
+  "units": "m, s, kg, rad",
+  "cell_size_m": [6.0, 6.0],
+  "stations": {
+    "A": {"id": 1, "conveyor_center_world": [3.0, 1.2, 0.75], "yaw_rad": 0.0, "dock_world": [3.0, 2.0, -1.5707963267948966]},
+    "B": {"id": 2, "conveyor_center_world": [3.0, 4.8, 0.75], "yaw_rad": 3.141592653589793, "dock_world": [3.0, 4.0, 1.5707963267948966]}
+  },
+  "start_pose_world": [1.0, 3.0, 0.0],
+  "conveyor": {
+    "length_m": 2.0, "width_m": 0.5, "height_m": 0.75,
+    "nominal_speed_mps": 0.03, "test_speed_range_mps": [0.025, 0.035],
+    "kit_pitch_m": 0.45, "nominal_arrival_interval_s": 15.0,
+    "work_entry_local_x_m": -0.3, "work_exit_local_x_m": 0.3,
+    "inspection_local_x_m": 0.55,
+    "feed_policy": "Belts continue moving; feeder only releases requested kits. Inactive station can run empty. Limit released plus accepted kits to five until a rejection requires a replacement."
+  },
+  "kit": {
+    "length_m": 0.3, "width_m": 0.24, "height_m": 0.025,
+    "bottle_xy_in_kit_m": [-0.07, 0.045], "ring_xy_in_kit_m": [0.07, 0.045],
+    "bottle_fixture": "Bottle may be retained in a kit fixture; ring must remain a freely manipulated rigid body."
+  },
+  "bottle": {
+    "height_m": 0.18, "body_diameter_m": 0.06, "body_height_m": 0.12,
+    "shoulder_height_m": 0.02, "neck_diameter_m": 0.032, "neck_height_m": 0.04,
+    "mass_kg": 0.15
+  },
+  "ring": {"rigid": true, "outer_diameter_m": 0.08, "inner_diameter_m": 0.048, "thickness_m": 0.008, "mass_kg": 0.04},
+  "acceptance": {
+    "radial_error_max_m": 0.004, "ring_center_z_from_bottle_base_m": [0.130, 0.136],
+    "tilt_max_rad": 0.17453292519943295, "settled_hold_s": 0.5,
+    "requires_bottle_contact": true, "requires_release": true, "disallows_kit_support": true
+  },
+  "robot": {
+    "default": "Single arm on AMR; candidate selects documented robot model",
+    "suggested_max_footprint_m": [0.65, 0.65], "suggested_arm_reach_min_m": 0.8,
+    "max_transit_speed_mps": 0.35, "max_yaw_rate_radps": 0.6,
+    "dock_position_tolerance_m": 0.025, "dock_yaw_tolerance_rad": 0.03490658503988659,
+    "assembly_base_speed_max_mps": 0.01,
+    "required_sensors": ["wheel odometry", "IMU", "navigation LiDAR", "one RGB-D camera", "conveyor encoder and kit-arrival signal"],
+    "navigation": "Known map allowed; localize, plan, move and dock using sensors. No robot teleportation."
+  },
+  "timing": {
+    "assembly_target_s": 12.0, "nominal_mission_target_s": 270.0,
+    "accepted_per_station_before_switch": 5, "target_total_accepted": 10,
+    "status": "Proposed engineering target checked by timing budget, not a measured complete robot result",
+    "cycle_definition": "Kit bottle crosses work-entry line to the first independently verified 0.5 s released seating hold; downstream inspection time and station travel are separate."
+  },
+  "interruptions": {
+    "stop_command_deadline_s": 0.2, "motion_settled_deadline_s": 1.0,
+    "base_stopped_speed_mps": 0.01, "ee_stopped_speed_mps": 0.01,
+    "warning": "Simulation acceptance behavior only; not a certified human-protective safety function.",
+    "human_zone": "Person within 1m of base footprint or inside active workstation interaction zone. Candidate documents zone geometry and sensor detection.",
+    "resume": "Explicitly clear/acknowledge interruption, reacquire or reject moving kit, preserve kit IDs and accepted counts."
+  }
+}

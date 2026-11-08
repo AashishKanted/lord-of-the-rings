@@ -1,0 +1,14 @@
+name: checks
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --group dev --group physics
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+      - run: uv run systems-timing
+      - run: uv run python -m advaitic_systems.parts
