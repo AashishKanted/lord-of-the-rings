@@ -1,9 +1,9 @@
 """The only data that crosses between the simulator/plant and the robot software.
 
-Robot modules (``ringcell.robot``) receive a `SensorFrame` and return a `RobotCommand`.
-They never import ``ringcell.sim`` or ``ringcell.plant`` (enforced by a test), so no
+Robot modules (``frodo.robot``) receive a `SensorFrame` and return a `RobotCommand`.
+They never import ``frodo.sim`` or ``frodo.plant`` (enforced by a test), so no
 ground truth can leak into robot decisions. Line state reaches the robot only through
-Modbus/TCP (``ringcell.robot.plc``).
+Modbus/TCP (``frodo.robot.plc``).
 """
 from __future__ import annotations
 

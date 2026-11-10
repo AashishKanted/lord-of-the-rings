@@ -1,6 +1,6 @@
-"""Loads ``config/ringcell.toml`` once and exposes it with attribute access.
+"""Loads ``config/frodo.toml`` once and exposes it with attribute access.
 
-    from ringcell.config import get_config
+    from frodo.config import get_config
     cfg = get_config()
     cfg.navigation.max_linear_mps
 """
@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = ROOT / "config" / "ringcell.toml"
+DEFAULT_CONFIG = ROOT / "config" / "frodo.toml"
 
 
 class Section(dict):
@@ -40,5 +40,5 @@ def _load(path: Path) -> Section:
 
 
 def get_config(path: str | Path | None = None) -> Section:
-    """Explicit path > $RINGCELL_CONFIG > config/ringcell.toml."""
-    return _load(Path(path or os.environ.get("RINGCELL_CONFIG") or DEFAULT_CONFIG).resolve())
+    """Explicit path > $FRODO_CONFIG > config/frodo.toml."""
+    return _load(Path(path or os.environ.get("FRODO_CONFIG") or DEFAULT_CONFIG).resolve())

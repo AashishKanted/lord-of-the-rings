@@ -5,8 +5,8 @@ from the customer dimensions. Kits ride a slide joint along their belt and are
 driven by a velocity actuator (the README's "carrier along its track"); the bottle
 is retained on the kit; the ring is a free rigid body resting on the kit.
 
-    uv run python -m ringcell.sim.scene --view          # interactive viewer
-    uv run python -m ringcell.sim.scene --render out.png  # headless snapshot
+    uv run python -m frodo.sim.scene --view          # interactive viewer
+    uv run python -m frodo.sim.scene --render out.png  # headless snapshot
 """
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ def add_kit(spec, st: Station, kit_name: str, local_x: float = 0.0):
                       **PART_CONTACT)
     # Documented grasp constraint (README "What you may simplify"): a weld between the
     # gripper and this ring. It starts inactive; the robot may only activate it after a
-    # verified physical grasp (see ringcell.grasp) and must deactivate it on release.
+    # verified physical grasp (see frodo.grasp) and must deactivate it on release.
     weld = spec.add_equality(name=f"{kit_name}_grasp", type=mujoco.mjtEq.mjEQ_WELD,
                              objtype=mujoco.mjtObj.mjOBJ_BODY, name1="base", name2=ring.name)
     weld.active = False
@@ -135,7 +135,7 @@ def add_kit(spec, st: Station, kit_name: str, local_x: float = 0.0):
 def build_spec(kits: dict[str, list[float]] | None = None) -> mujoco.MjSpec:
     """kits maps station name -> list of initial kit local-x positions."""
     spec = mujoco.MjSpec.from_file(str(TIDYBOT_XML))
-    spec.modelname = "ring_cell"
+    spec.modelname = "frodo_cell"
     for key in list(spec.keys):
         spec.delete(key)
     spec.option.timestep = get_config().sim.timestep_s

@@ -2,7 +2,7 @@
 
 Planned: integrate the base twist into the x/y/yaw position servos with velocity and
 acceleration limits, pass arm targets and gripper command through, and gate the grasp
-constraint on the physical grasp conditions (see ``ringcell.sim.grasp``).
+constraint on the physical grasp conditions (see ``frodo.sim.grasp``).
 """
 from __future__ import annotations
 

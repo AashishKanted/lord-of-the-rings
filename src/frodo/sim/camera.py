@@ -1,6 +1,6 @@
 """Simulated RGB-D camera: colour + metric depth from any named MuJoCo camera.
 
-    uv run python -m ringcell.sim.camera --camera wrist --out results/camera
+    uv run python -m frodo.sim.camera --camera wrist --out results/camera
 
 MuJoCo camera frame convention: looks along -z, +x is image right, +y is image up.
 Depth images are metres along the optical axis (not ray length).

@@ -4,7 +4,7 @@ ORACLE MODE: the robot reads the true ring/bottle poses and belt speed from the
 simulator, and starts already docked at station A. This proves kinematics, belt
 tracking, grasp and seating physics only. It is not a sensor-driven result.
 
-    uv run python -m ringcell.apps.pick_place_demo --video results/demo/pick_place.mp4
+    uv run python -m frodo.apps.pick_place_demo --video results/demo/pick_place.mp4
 """
 from __future__ import annotations
 

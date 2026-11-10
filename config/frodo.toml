@@ -1,6 +1,6 @@
-# Tunable parameters for the ringcell solution. Customer dimensions and limits are
+# Tunable parameters for the frodo solution. Customer dimensions and limits are
 # NOT here: they come from spec/customer_cell.json and must not be changed.
-# Use another file with:  RINGCELL_CONFIG=path/to/file.toml  or  scripts/run.sh -c FILE ...
+# Use another file with:  FRODO_CONFIG=path/to/file.toml  or  scripts/run.sh -c FILE ...
 
 [logging]
 level = "INFO"            # DEBUG, INFO, WARNING, ERROR
@@ -14,7 +14,7 @@ seed = 0
 [robot]
 arm_riser_m = 0.40        # spacer column under the arm (documented robot modification)
 
-# ---- sensors (simulated in ringcell.sim, consumed only through ringcell.interfaces) ----
+# ---- sensors (simulated in frodo.sim, consumed only through frodo.interfaces) ----
 [sensors.lidar]           # two low 2D lidars on opposite base corners -> 360 deg cover
 rate_hz = 10.0
 height_m = 0.12

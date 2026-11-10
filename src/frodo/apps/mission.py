@@ -1,10 +1,10 @@
 """Full mission runner: sim + plant + robot in one deterministic loop. PLACEHOLDER.
 
     loop every control tick:
-        frame   = sensors.read(data)          # ringcell.sim.sensors
-        command = orchestrator.step(frame)    # ringcell.robot (includes safety filter)
-        bridge.apply(data, command)           # ringcell.sim.actuation
-        for each physics step: mj_step; line.step(data)   # ringcell.plant
+        frame   = sensors.read(data)          # frodo.sim.sensors
+        command = orchestrator.step(frame)    # frodo.robot (includes safety filter)
+        bridge.apply(data, command)           # frodo.sim.actuation
+        for each physics step: mj_step; line.step(data)   # frodo.plant
 """
 from __future__ import annotations
 

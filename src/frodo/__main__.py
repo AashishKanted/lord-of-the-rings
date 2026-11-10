@@ -1,10 +1,10 @@
 """Command-line entry point.
 
-    python -m ringcell view [--dock A]         interactive viewer
-    python -m ringcell render OUT.png          headless snapshot
-    python -m ringcell camera [--camera NAME]  save RGB-D frames from one camera
-    python -m ringcell demo [--video FILE]     ORACLE pick-and-place demo
-    python -m ringcell mission [--scenario S]  full mission (not implemented yet)
+    python -m frodo view [--dock A]         interactive viewer
+    python -m frodo render OUT.png          headless snapshot
+    python -m frodo camera [--camera NAME]  save RGB-D frames from one camera
+    python -m frodo demo [--video FILE]     ORACLE pick-and-place demo
+    python -m frodo mission [--scenario S]  full mission (not implemented yet)
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print(__doc__)
         return
-    command, sys.argv = sys.argv[1], [f"ringcell {sys.argv[1]}", *sys.argv[2:]]
+    command, sys.argv = sys.argv[1], [f"frodo {sys.argv[1]}", *sys.argv[2:]]
     if command == "view":
         sys.argv.insert(1, "--view")
         from .sim.scene import main as run

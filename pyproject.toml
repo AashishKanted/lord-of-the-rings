@@ -23,7 +23,7 @@ physics = ["mujoco==3.8.1", "numpy>=1.26,<3"]
 solution = ["mink>=1.2", "pillow>=10", "imageio[ffmpeg]>=2.34"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/advaitic_systems", "src/ringcell"]
+packages = ["src/advaitic_systems", "src/frodo"]
 
 [tool.ruff]
 line-length = 100

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the ringcell solution.
+# Launcher for the frodo solution.
 #   scripts/run.sh [-c CONFIG.toml] <view|render|camera|demo|mission> [args...]
 # Examples:
 #   scripts/run.sh view --dock A
@@ -9,14 +9,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ "${1:-}" == "-c" ]]; then
-  export RINGCELL_CONFIG="$2"
+  export FRODO_CONFIG="$2"
   shift 2
 fi
 if [[ $# -eq 0 ]]; then
-  exec uv run python -m ringcell --help
+  exec uv run python -m frodo --help
 fi
 # Everything except the interactive viewer renders off-screen.
 if [[ "$1" != "view" ]]; then
   export MUJOCO_GL="${MUJOCO_GL:-egl}"
 fi
-exec uv run python -m ringcell "$@"
+exec uv run python -m frodo "$@"

@@ -1,6 +1,6 @@
 """One logging setup for every module: timestamp, level, file:line, message.
 
-    from ringcell.log import get_logger
+    from frodo.log import get_logger
     log = get_logger(__name__)
     log.info("docked at %s", station)
 """
