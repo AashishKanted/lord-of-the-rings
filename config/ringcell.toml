@@ -1,0 +1,98 @@
+# Tunable parameters for the ringcell solution. Customer dimensions and limits are
+# NOT here: they come from spec/customer_cell.json and must not be changed.
+# Use another file with:  RINGCELL_CONFIG=path/to/file.toml  or  scripts/run.sh -c FILE ...
+
+[logging]
+level = "INFO"            # DEBUG, INFO, WARNING, ERROR
+file = ""                 # optional log file path; empty = console only
+
+[sim]
+timestep_s = 0.002        # physics step
+control_dt_s = 0.01       # robot software tick (100 Hz)
+seed = 0
+
+[robot]
+arm_riser_m = 0.40        # spacer column under the arm (documented robot modification)
+
+# ---- sensors (simulated in ringcell.sim, consumed only through ringcell.interfaces) ----
+[sensors.lidar]           # two low 2D lidars on opposite base corners -> 360 deg cover
+rate_hz = 10.0
+height_m = 0.12
+range_max_m = 8.0
+range_noise_std_m = 0.005
+rays = 540                # per lidar, over fov_deg
+fov_deg = 270.0
+mounts = [                # x, y in base frame (m), yaw (deg) of the sensor's forward axis
+  { name = "front_left", x = 0.26, y = 0.26, yaw_deg = 45.0 },
+  { name = "rear_right", x = -0.26, y = -0.26, yaw_deg = -135.0 },
+]
+
+[sensors.odometry]
+rate_hz = 100.0
+noise_std_frac = 0.01     # per-axis velocity noise as a fraction of speed
+
+[sensors.imu]
+rate_hz = 100.0
+gyro_noise_std_radps = 0.002
+gyro_bias_radps = 0.0005
+
+[sensors.cameras]
+# The customer allows ONE RGB-D camera for the robot. Both mounts exist in the scene so
+# they can be compared; only `perception_source` is fed to the perception pipeline.
+enabled = ["wrist", "mast"]
+perception_source = "mast"
+width = 640
+height = 480
+rate_hz = 15.0
+depth_noise_std_m = 0.001
+
+[sensors.cameras.mast]    # fixed post on the base, looking down at the work window
+pos_m = [0.20, 0.0, 1.55]
+pitch_deg = 60.0          # downward tilt from horizontal
+fovy_deg = 60.0
+
+# ---- robot software modules ----
+[localization]
+method = "ekf_icp"        # EKF (odometry + gyro predict) corrected by scan-to-map ICP
+icp_max_iterations = 20
+icp_max_correspondence_m = 0.15
+process_noise_xy_m = 0.002
+process_noise_yaw_rad = 0.002
+
+[navigation]
+grid_resolution_m = 0.05
+inflation_m = 0.45        # robot circumscribed radius + margin
+max_linear_mps = 0.5
+max_angular_radps = 1.0
+max_linear_accel_mps2 = 0.5
+max_angular_accel_radps2 = 1.5
+lookahead_m = 0.30
+dock_switch_distance_m = 0.40   # hand over from path tracking to fine docking
+dock_tolerance_m = 0.005
+dock_tolerance_rad = 0.009      # 0.5 deg (customer limit: 25 mm, 2 deg)
+dock_max_linear_mps = 0.08
+
+[safety]
+slow_distance_m = 1.00    # start scaling speed down
+stop_distance_m = 0.45    # zero motion at or inside this
+human_zone_radius_m = 1.0 # customer rule: person within 1 m of the base footprint
+max_stop_latency_s = 0.2
+
+[perception]
+method = "classical"      # colour + depth segmentation, circle fit
+ring_hsv_low = [95, 120, 60]
+ring_hsv_high = [115, 255, 255]
+
+[manipulation]
+control_dt_s = 0.01
+tilt_deg = 35.0           # gripper pitch away from vertical, about the finger axis
+max_speed_mps = 0.25      # tool motion relative to the belt
+max_accel_mps2 = 0.8
+belt_lead_s = 0.05        # aim ahead on the belt to cancel servo lag
+grip_preshape = 120       # Robotiq command 0 (open, 85 mm) .. 255 (closed)
+grip_closed = 255
+release_radial_m = 0.001  # ring-over-neck error allowed at release
+
+[mission]
+assemblies_per_station = 5
+station_order = ["A", "B"]
