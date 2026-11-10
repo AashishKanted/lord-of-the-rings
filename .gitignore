@@ -6,3 +6,4 @@ __pycache__/
 results/
 submission/checkpoints/
 .env
+MUJOCO_LOG.TXT

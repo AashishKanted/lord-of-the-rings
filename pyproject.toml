@@ -19,9 +19,11 @@ systems-timing = "advaitic_systems.timing:main"
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.12"]
 physics = ["mujoco==3.8.1", "numpy>=1.26,<3"]
+# Candidate solution dependencies (not part of the starter).
+solution = ["mink>=1.2", "pillow>=10", "imageio[ffmpeg]>=2.34"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/advaitic_systems"]
+packages = ["src/advaitic_systems", "src/ringcell"]
 
 [tool.ruff]
 line-length = 100
