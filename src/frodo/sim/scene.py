@@ -82,6 +82,8 @@ def _add_conveyor(spec, st: Station):
 def add_kit(spec, st: Station, kit_name: str, local_x: float = 0.0):
     """Kit carrier + retained bottle + free ring. Returns the names created."""
     k, b, r = CELL["kit"], CELL["bottle"], CELL["ring"]
+    # Extra collision bits used only by kits: ring segments that rest on a tray; ring-to-ring.
+    RING_SUPPORT, RING = 4, 8
     both = dict(contype=ROBOT | PARTS, conaffinity=ROBOT | PARTS, **PART_CONTACT)
     # Kit frame: plan centre on its top surface, x along belt travel.
     # ref=local_x makes the slide joint value equal the kit's station-local x.
@@ -89,9 +91,11 @@ def add_kit(spec, st: Station, kit_name: str, local_x: float = 0.0):
                                   quat=_yaw_quat(st.yaw))
     kit.add_joint(name=f"{kit_name}_slide", type=mujoco.mjtJoint.mjJNT_SLIDE, axis=[1, 0, 0],
                   ref=local_x)
+    # The tray collides with the robot and with the ring's support segments only (see ring).
     kit.add_geom(name=f"{kit_name}_tray", type=BOX, pos=[0, 0, -k["height_m"] / 2], mass=1.0,
                  size=[k["length_m"] / 2, k["width_m"] / 2, k["height_m"] / 2],
-                 rgba=[.55, .45, .3, 1], **both)
+                 rgba=[.55, .45, .3, 1], contype=0, conaffinity=ROBOT | RING_SUPPORT,
+                 **PART_CONTACT)
     bx, by = k["bottle_xy_in_kit_m"]
     rb, rn = b["body_diameter_m"] / 2, b["neck_diameter_m"] / 2
     zb, zs = b["body_height_m"], b["body_height_m"] + b["shoulder_height_m"]
@@ -116,13 +120,18 @@ def add_kit(spec, st: Station, kit_name: str, local_x: float = 0.0):
     ring = spec.worldbody.add_body(name=f"{kit_name}_ring",
                                    pos=st.to_world([local_x + rx, ry], KIT_TOP_Z + th / 2))
     ring.add_freejoint(name=f"{kit_name}_ring_free")
+    # All 48 segments collide with the robot, bottle, belt, floor and other rings. Only every
+    # `support_every`-th one also collides with a kit tray: a flat ring on a flat tray would
+    # otherwise make 192 contacts per kit, which dominates the step time of a full kit pool.
     n, mid = 48, (ro + ri) / 2
+    support_every = n // get_config().plant.ring_tray_contact_segments
     for i in range(n):
         a = i * 2 * pi / n
         ring.add_geom(type=BOX, pos=[mid * cos(a), mid * sin(a), 0], quat=_yaw_quat(a),
                       size=[(ro - ri) / 2, mid * sin(pi / n), th / 2], mass=r["mass_kg"] / n,
-                      rgba=[.1, .55, .9, 1], contype=ROBOT | PARTS, conaffinity=ROBOT | PARTS,
-                      **PART_CONTACT)
+                      rgba=[.1, .55, .9, 1],
+                      contype=RING | (RING_SUPPORT if i % support_every == 0 else 0),
+                      conaffinity=ROBOT | PARTS | RING, **PART_CONTACT)
     # Documented grasp constraint (README "What you may simplify"): a weld between the
     # gripper and this ring. It starts inactive; the robot may only activate it after a
     # verified physical grasp (see frodo.grasp) and must deactivate it on release.
