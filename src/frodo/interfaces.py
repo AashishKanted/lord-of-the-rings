@@ -95,6 +95,18 @@ class JointState:
     gripper: float           # 0 open .. 1 closed (measured)
 
 
+@dataclass(frozen=True)
+class GroundTruthKit:
+    """ORACLE ONLY: true pose of one kit on a belt, for the oracle perception backend.
+
+    The simulator fills these only when ``perception.method = "oracle"``. A run that uses
+    them is not a sensor-driven perception result and must be labelled as such.
+    """
+    name: str
+    ring_in_base: np.ndarray     # xyz of the ring centre, base frame
+    bottle_in_base: np.ndarray   # xyz of the bottle axis at the bottle base, base frame
+
+
 @dataclass
 class SensorFrame:
     """Everything the robot may know at one control tick. Slow sensors are None between
@@ -106,6 +118,7 @@ class SensorFrame:
     lidars: list[LidarScan] = field(default_factory=list)
     camera: RgbdFrame | None = None
     conveyors: list[ConveyorSignal] = field(default_factory=list)
+    ground_truth: list[GroundTruthKit] | None = None   # ORACLE ONLY, see GroundTruthKit
 
 
 @dataclass

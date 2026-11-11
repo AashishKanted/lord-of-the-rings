@@ -154,7 +154,15 @@ human_zone_radius_m = 1.0 # customer rule: person within 1 m of the base footpri
 max_stop_latency_s = 0.2
 
 [perception]
-method = "classical"      # colour + depth segmentation, circle fit
+# "oracle"    = true kit poses from the simulator (ORACLE: for developing the control stack)
+# "classical" = colour + depth segmentation, circle fit (not implemented yet)
+method = "oracle"
+oracle_rate_hz = 30.0     # the oracle reports at a camera-like rate
+oracle_noise_std_m = 0.0  # Gaussian position noise added to oracle poses
+view_half_length_m = 0.75 # kits farther than this from the conveyor centre are not reported
+match_radius_m = 0.10     # detection-to-track association gate (kits are 450 mm apart)
+track_timeout_s = 2.0     # drop a track not detected for this long
+history_s = 0.5           # belt-travel history kept to line up delayed detections
 ring_hsv_low = [95, 120, 60]
 ring_hsv_high = [115, 255, 255]
 
@@ -167,10 +175,39 @@ belt_lead_s = 0.05        # aim ahead on the belt to cancel servo lag
 grip_preshape = 120       # Robotiq command 0 (open, 85 mm) .. 255 (closed)
 grip_closed = 255
 release_radial_m = 0.001  # ring-over-neck error allowed at release
+# -- arm controller (frodo.robot.manipulation.arm_controller) --
+joint_speed_radps = 1.2   # peak joint speed of stow / unstow moves
+hover_height_m = 0.24     # waiting pose: tool height above the kit top (bottles, 0.18 m tall, pass under it)
+hover_ahead_m = 0.03      # ... and distance downstream of where the ring's grasp point enters
+pregrasp_height_m = 0.04  # approach the grasp point from this far above
+grasp_position_tol_m = 0.003   # measured tool-to-grasp-point error allowed before closing
+grasp_settle_s = 0.15     # minimum closing time before the grasp check
+grasp_still_rate_per_s = 0.2   # fingers count as stopped below this closing rate (fraction/s)
+grasp_detect_min = 0.55   # measured gripper closure (0..1) that means "holding the ring wall"
+grasp_detect_max = 0.93   #   (an empty gripper closes to ~0.98)
+grasp_timeout_s = 2.0
+carry_clearance_m = 0.022 # ring centre above the neck top while carrying
+release_height_m = 0.007  # ring centre above the neck top at release
+place_trim_gain_per_s = 15.0   # integral gain of the ring-over-neck centring
+release_dwell_s = 0.10    # centred for this long before release
+place_timeout_s = 4.0     # release anyway after this long centring (will likely be rejected)
+release_settle_s = 0.30   # wait after opening before retreating
+retreat_up_m = 0.08       # retreat: tool this far above the neck top ...
+retreat_back_m = 0.05     #   ... and this far back toward the robot
 
 [mission]
 assemblies_per_station = 5
 station_order = ["A", "B"]
+# When to leave a station for the next one:
+#   "after_accepted"  stay docked until the line controller shows the full batch accepted
+#   "after_done"      leave once the batch is reported ASSEMBLY_DONE; wait at the next
+#                     station's pre-dock pose until the batch is accepted, return on a reject
+leave_policy = "after_accepted"
+plc_poll_hz = 10.0        # line-controller register polling rate
+pick_window_local_x_m = [-0.33, 0.0]   # a cycle may start while the bottle is inside this
+done_margin_m = 0.005     # ASSEMBLY_DONE is only reported this far before the work exit
+time_limit_s = 300.0      # the mission runner gives up after this long
+sample_period_s = 0.05    # evidence motion samples (customer minimum is 10 Hz)
 
 # ---- customer line (frodo.plant); uses simulator ground truth, never robot decisions ----
 [plant]

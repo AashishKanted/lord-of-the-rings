@@ -280,4 +280,7 @@ def test_plant_can_supply_belt_speed(empty_model, fresh, step):
 def test_sensor_frame_carries_no_ground_truth(empty_model, fresh):
     """Guard on the message set: a frame holds exactly the customer's sensor list."""
     frame = suite_for(empty_model).read(fresh(empty_model))
-    assert set(vars(frame)) == {"t", "joints", "odometry", "imu", "lidars", "camera", "conveyors"}
+    assert set(vars(frame)) == {"t", "joints", "odometry", "imu", "lidars", "camera", "conveyors",
+                                "ground_truth"}
+    # the oracle slot exists for perception.method = "oracle" but the sensor suite never fills it
+    assert frame.ground_truth is None
