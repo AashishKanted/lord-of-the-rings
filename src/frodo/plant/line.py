@@ -73,6 +73,7 @@ class Line:
         self.params = params or feeder.run_parameters(belt_speed_mps, release_phase_s)
         self.order = list(self.config.mission.station_order)
         self._gain = plant.carrier_position_gain_per_s
+        self._release_x = feeder.release_x(self.config)
         self._belts: dict[str, _Belt] = {}
         for name, st in STATIONS.items():
             pool = feeder.find_pool(model, st, self.config)
@@ -187,8 +188,8 @@ class Line:
         if self._next_kit_id > 65535:
             raise RuntimeError("kit ids exhausted (Modbus register is 16 bit)")
         kit_id, self._next_kit_id = self._next_kit_id, self._next_kit_id + 1
-        carrier.place_kit(data, feeder.INFEED_X, belt.speed)
-        carrier.place_ring_on_nest(data, feeder.INFEED_X, belt.speed)
+        carrier.place_kit(data, self._release_x, belt.speed)
+        carrier.place_ring_on_nest(data, self._release_x, belt.speed)
         carrier.on_belt, carrier.release_travel = True, belt.travel
         carrier.record = {"kit_id": kit_id, "station": name, "carrier": carrier.name,
                           "belt_speed_mps": belt.speed, "released_t": data.time,
@@ -208,7 +209,7 @@ class Line:
             return
         # Carrier follows the belt: speed feed-forward plus a position loop on belt travel,
         # so a push from the robot cannot make the kit lag the belt permanently.
-        target_x = feeder.INFEED_X + belt.travel - c.release_travel
+        target_x = self._release_x + belt.travel - c.release_travel
         data.ctrl[c.drive] = belt.speed + self._gain * (target_x - x)
         rec, st, t = c.record, c.station, data.time
         bottle_x = x + feeder.BOTTLE_X_IN_KIT

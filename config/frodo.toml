@@ -181,6 +181,7 @@ magazine_gap_m = 0.30             # clear space between the belt's upstream end 
 magazine_spacing_m = 0.02         # gap between parked kits
 carrier_position_gain_per_s = 20.0  # keeps each carrier on the belt's position, not just its speed
 first_kit_id = 1
+release_lead_m = 0.15             # bottle travel from release to the work-entry line (not a customer value)
 release_phase_range_s = [0.0, 1.0]  # ACCEPTANCE.md: first release this long after readiness
 ring_tray_contact_segments = 12   # of the ring's 48 collision segments, how many touch a tray
 seat_raw_log = true               # per-step seat samples (seat_samples.jsonl) for hold recompute

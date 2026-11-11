@@ -16,12 +16,16 @@ from advaitic_systems.evidence import check
 from advaitic_systems.modbus import PLCClient
 from frodo.apps import pick_place_demo
 from frodo.cell import CELL, KIT_TOP_Z, STATIONS
+from frodo.config import get_config, with_overrides
 from frodo.plant import feeder
 from frodo.plant.line import Line
 from frodo.sim.scene import build_spec, reset
 
 READY, NOT_READY, ASSEMBLY_DONE = 1, 2, 3
 SPEED_A, SPEED_B, PHASE_A = 0.035, 0.027, 0.4
+# Longest run-in: a lead beyond the belt is clamped to the upstream end, so a kit covers the
+# whole belt and four are on it at once (the default lead is much shorter).
+FULL_BELT = with_overrides(get_config(), {"plant": {"release_lead_m": 10.0}})
 
 
 @pytest.fixture(scope="module")
@@ -37,7 +41,7 @@ def plant_only(tmp_path_factory):
     a0 = model.joint("kit_A0_slide")
     a1 = model.joint("kit_A1_slide")
     ring0 = model.body("kit_A0_ring").id
-    with Line(model, belt_speed_mps={"A": SPEED_A, "B": SPEED_B},
+    with Line(model, FULL_BELT, belt_speed_mps={"A": SPEED_A, "B": SPEED_B},
               release_phase_s={"A": PHASE_A}, events_path=out / "events.jsonl", port=0) as line:
         plc = PLCClient(port=line.port)
         plc.command(1, 1, 0, READY)
@@ -90,7 +94,7 @@ def test_kits_enter_at_customer_pitch_and_run_speed(plant_only):
 
 def test_arrival_is_registered_in_plc_over_tcp_at_the_bottle_crossing(plant_only):
     kits, reg = plant_only["kits"], plant_only["registers"]
-    entry_travel = feeder.WORK_ENTRY_X - feeder.BOTTLE_X_IN_KIT - feeder.INFEED_X
+    entry_travel = feeder.WORK_ENTRY_X - feeder.BOTTLE_X_IN_KIT - feeder.release_x(FULL_BELT)
     assert kits[0]["arrived_t"] - kits[0]["released_t"] == pytest.approx(
         entry_travel / SPEED_A, abs=0.01)
     arrivals = [k["arrived_t"] for k in kits if k["arrived_t"] is not None]
@@ -122,7 +126,7 @@ def test_kit_is_recycled_with_its_ring_back_on_the_nest(plant_only):
     kits = plant_only["kits"]
     assert kits[0]["carrier"] == "kit_A0" and kits[4]["carrier"] == "kit_A0"
     x = plant_only["a0_x_final"]
-    assert feeder.INFEED_X < x < feeder.INFEED_X + 0.05   # just re-entered at the infeed
+    assert feeder.release_x(FULL_BELT) < x < feeder.release_x(FULL_BELT) + 0.05   # just released again
     rx, ry = CELL["kit"]["ring_xy_in_kit_m"]
     expected = STATIONS["A"].to_world([x + rx, ry], KIT_TOP_Z + CELL["ring"]["thickness_m"] / 2)
     assert plant_only["ring0_final"] == pytest.approx(expected, abs=1e-3)

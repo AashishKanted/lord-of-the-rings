@@ -42,3 +42,16 @@ def _load(path: Path) -> Section:
 def get_config(path: str | Path | None = None) -> Section:
     """Explicit path > $FRODO_CONFIG > config/frodo.toml."""
     return _load(Path(path or os.environ.get("FRODO_CONFIG") or DEFAULT_CONFIG).resolve())
+
+
+def with_overrides(config: Section, overrides: dict) -> Section:
+    """A copy of ``config`` with nested values replaced, e.g.
+    ``with_overrides(cfg, {"plant": {"release_lead_m": 0.3}})``. The original is untouched."""
+    def merge(base, extra):
+        out = Section(base)
+        for key, value in extra.items():
+            if key not in base:
+                raise KeyError(f"config has no key '{key}' (have: {sorted(base)})")
+            out[key] = merge(base[key], value) if isinstance(value, dict) else _wrap(value)
+        return out
+    return merge(config, overrides)

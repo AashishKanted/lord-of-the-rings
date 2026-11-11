@@ -5,12 +5,12 @@ carriers. A kit that is not on the belt is parked in a "magazine": a row of slot
 same slide axis, upstream of the belt and outside the conveyor. Two plant-side fixture
 resets act on parts that are outside the work area:
 
-- release: a parked kit is put at the belt's upstream end with its ring on its nest,
-  moving at belt speed;
+- release: a parked kit is put on the belt ``plant.release_lead_m`` before the work-entry
+  line (see `release_x`) with its ring on its nest, moving at belt speed;
 - recycle: a kit that has run off the downstream end (after inspection) is put back in
   its magazine slot and its ring is put back on its nest.
 
-Nothing is repositioned between the upstream end of the belt and its downstream end, so
+Nothing is repositioned between the release point and the belt's downstream end, so
 everything the robot and the inspection see is plain physics.
 """
 from __future__ import annotations
@@ -36,6 +36,17 @@ WORK_ENTRY_X = _C["work_entry_local_x_m"]
 WORK_EXIT_X = _C["work_exit_local_x_m"]
 INSPECTION_X = _C["inspection_local_x_m"]
 BATCH = CELL["timing"]["accepted_per_station_before_switch"]
+
+
+def release_x(config=None) -> float:
+    """Kit-centre position (station-local x) at which the feeder puts a kit on the belt.
+
+    The customer documents do not fix where a kit joins the belt. ``plant.release_lead_m``
+    is the distance the bottle still has to travel to the work-entry line; the position is
+    never upstream of the point where the whole kit is on the belt.
+    """
+    plant = (config or get_config()).plant
+    return max(INFEED_X, WORK_ENTRY_X - plant.release_lead_m - BOTTLE_X_IN_KIT)
 
 
 def min_pool_size() -> int:
