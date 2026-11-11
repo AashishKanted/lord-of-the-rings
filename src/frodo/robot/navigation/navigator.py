@@ -9,6 +9,7 @@ Regimes:
     PLANNING  first step after go_to_dock: A* from the current pose to the pre-dock pose,
               which is ``dock_switch_distance_m`` straight back from the dock
     TRACKING  follow the path at travel speed
+    HOLDING   optional: wait at rest at the pre-dock pose until `release_hold`
     DOCKING   from the pre-dock pose, slow closed-loop regulation onto the dock pose
     DOCKED    latched; zero command
     FAILED    no path; zero command
@@ -39,6 +40,7 @@ class NavStatus(Enum):
     IDLE = "idle"
     PLANNING = "planning"
     TRACKING = "tracking"
+    HOLDING = "holding"
     DOCKING = "docking"
     DOCKED = "docked"
     FAILED = "failed"
@@ -65,13 +67,24 @@ class Navigator:
         self.station: str | None = None
         self.dock: Pose2D | None = None
         self.path: list[Pose2D] = []
+        self._hold = False
 
-    def go_to_dock(self, station: str) -> None:
-        """Request a move to a station's dock; planning happens on the next `step`."""
+    def go_to_dock(self, station: str, hold_at_pre_dock: bool = False) -> None:
+        """Request a move to a station's dock; planning happens on the next `step`. With
+        ``hold_at_pre_dock`` the base stops at the pre-dock pose until `release_hold`."""
         self.station, self.dock = station, dock_pose(station)
+        self._hold = hold_at_pre_dock
         self.path = []
         self.docking.reset()
         self.status = NavStatus.PLANNING
+
+    def release_hold(self) -> None:
+        """Allow (or resume) the final docking after a hold at the pre-dock pose."""
+        self._hold = False
+        if self.status is NavStatus.HOLDING:
+            log.info("hold released, docking at %s", self.station)
+            self.docking.reset()
+            self.status = NavStatus.DOCKING
 
     def cancel(self) -> None:
         """Drop the current goal; subsequent steps brake to rest."""
@@ -83,7 +96,10 @@ class Navigator:
             self._plan(pose)
         if self.status is NavStatus.TRACKING:
             command, reached = self.tracker.step(pose, dt)
-            if reached:
+            if reached and self._hold:
+                log.info("pre-dock reached for %s, holding", self.station)
+                self.status = NavStatus.HOLDING
+            elif reached:
                 log.info("pre-dock reached for %s, switching to docking", self.station)
                 self.status = NavStatus.DOCKING
             return command, self.status
@@ -95,7 +111,7 @@ class Navigator:
                          np.degrees(self.docking.yaw_error))
                 self.status = NavStatus.DOCKED
             return command, self.status
-        # IDLE, DOCKED, FAILED: brake to rest within the acceleration limits.
+        # IDLE, HOLDING, DOCKED, FAILED: brake to rest within the acceleration limits.
         return self.limiter.limit(np.zeros(2), 0.0, pose.yaw, dt), self.status
 
     def _plan(self, pose: Pose2D) -> None:
