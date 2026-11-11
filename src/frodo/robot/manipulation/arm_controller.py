@@ -29,11 +29,17 @@ from ...log import get_logger
 from ..description import ARM_HOME, ARM_JOINTS, ARM_STOWED
 from ..frames import StationFrame
 from ..perception.types import KitObservation
-from .ik import WALL_MID, ArmFK, ArmIK, tool_rotation_from_axes
+from .ik import ArmFK, ArmIK, tool_rotation_from_axes
 from .motion import JointMove, Slew
 
 log = get_logger(__name__)
 NECK_TOP = CELL["bottle"]["height_m"]
+_B, _R = CELL["bottle"], CELL["ring"]
+# Height of the ring centre above the bottle base when the ring rests level on the shoulder
+# cone (where the cone's radius equals the ring's inner radius).
+SEAT_Z = (_B["body_height_m"] + _B["shoulder_height_m"]
+          * (_B["body_diameter_m"] - _R["inner_diameter_m"])
+          / (_B["body_diameter_m"] - _B["neck_diameter_m"]) + _R["thickness_m"] / 2)
 _KIT = CELL["kit"]
 RING_AHEAD_OF_BOTTLE = _KIT["ring_xy_in_kit_m"][0] - _KIT["bottle_xy_in_kit_m"][0]
 REACHED_M = 1e-4
@@ -99,7 +105,11 @@ class ArmController:
         self._reference = "base"        # what `_origin` rides on: "base", "ring" or "bottle"
         self._phase_t0 = 0.0
         self._last_gripper = 0.0
-        self._open = self.m.grip_preshape / 255.0
+        if self.m.grasp not in self.m.grasps:
+            raise ValueError(f"manipulation.grasp '{self.m.grasp}' is not one of "
+                             f"{sorted(self.m.grasps)}")
+        self.g = self.m.grasps[self.m.grasp]      # geometry of the selected grasp style
+        self._open = self.g.preshape / 255.0
         self._closed = self.m.grip_closed / 255.0
 
     # ---- station setup ----
@@ -113,8 +123,14 @@ class ArmController:
         q = self.model.qpos0.copy()
         q[[self.model.joint(j).qposadr[0] for j in ARM_JOINTS]] = ARM_HOME
         self.ik, self.fk = ArmIK(self.model, q, rot), ArmFK(self.model, rot)
+        # Tool point relative to the ring centre at the grasp. The tool point is where the
+        # pads meet when closed; on an open 2F-85 the pads sit higher and further out, which
+        # the per-grasp offsets account for.
+        self._grasp_from_ring = (self.g.offset_along_belt_m * station.belt_dir
+                                 + self.g.offset_toward_belt_m * toward
+                                 + [0, 0, self.g.offset_up_m])
         ring_x_at_entry = CELL["conveyor"]["work_entry_local_x_m"] + RING_AHEAD_OF_BOTTLE
-        self.hover = station.point(ring_x_at_entry + self.m.hover_ahead_m + WALL_MID,
+        self.hover = station.point(ring_x_at_entry + self.m.hover_ahead_m + self.g.offset_along_belt_m,
                                    _KIT["ring_xy_in_kit_m"][1], KIT_TOP_Z + self.m.hover_height_m)
         # Each round also re-centres the IK's posture preference on the result, so repeat
         # until the waiting pose is actually reached.
@@ -196,7 +212,7 @@ class ArmController:
     def _cycle(self, joints, obs, t, dt, gripper_rate) -> ArmCommand:
         m, belt = self.m, self.station.belt_dir
         ring, bottle = obs.ring_in_base, obs.bottle_in_base
-        grasp_point = ring + belt * WALL_MID + [0, 0, 0.001]    # downstream wall of the ring
+        grasp_point = ring + self._grasp_from_ring
         tcp = self.fk.tcp(joints.arm_q)                          # measured tool point
         in_phase = t - self._phase_t0
         command = ArmCommand(self._q_cmd, self._open)
@@ -222,7 +238,7 @@ class ArmController:
             # of about the ring wall's width (an empty gripper closes further), with the tool
             # still at the planned grasp point. Only then is the grasp constraint requested.
             gripped = (in_phase > m.grasp_settle_s and abs(gripper_rate) < m.grasp_still_rate_per_s
-                       and m.grasp_detect_min <= joints.gripper <= m.grasp_detect_max
+                       and self.g.detect_min <= joints.gripper <= self.g.detect_max
                        and np.linalg.norm(tcp - grasp_point) < 2 * m.grasp_position_tol_m)
             command.request_grasp = gripped
             self._gripped_ticks = self._gripped_ticks + 1 if gripped else 0
@@ -236,7 +252,7 @@ class ArmController:
                 return self._abort(t, dt, f"no grasp detected (gripper at {joints.gripper:.2f})")
         elif phase in CARRYING:
             command.gripper = self._closed
-            lift_z, release_z = NECK_TOP + m.carry_clearance_m, NECK_TOP + m.release_height_m
+            lift_z, release_z = NECK_TOP + m.carry_clearance_m, SEAT_Z + self.g.release_above_seat_m
             ring_goal = {ArmPhase.LIFT: RING_AHEAD_OF_BOTTLE * belt + [0, 0, lift_z],
                          ArmPhase.TRANSFER: np.array([0, 0, lift_z]),
                          ArmPhase.LOWER: np.array([0, 0, release_z])}[phase]

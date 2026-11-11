@@ -183,17 +183,38 @@ pregrasp_height_m = 0.04  # approach the grasp point from this far above
 grasp_position_tol_m = 0.003   # measured tool-to-grasp-point error allowed before closing
 grasp_settle_s = 0.15     # minimum closing time before the grasp check
 grasp_still_rate_per_s = 0.2   # fingers count as stopped below this closing rate (fraction/s)
-grasp_detect_min = 0.55   # measured gripper closure (0..1) that means "holding the ring wall"
-grasp_detect_max = 0.93   #   (an empty gripper closes to ~0.98)
 grasp_timeout_s = 2.0
 carry_clearance_m = 0.022 # ring centre above the neck top while carrying
-release_height_m = 0.007  # ring centre above the neck top at release
 place_trim_gain_per_s = 15.0   # integral gain of the ring-over-neck centring
 release_dwell_s = 0.10    # centred for this long before release
 place_timeout_s = 4.0     # release anyway after this long centring (will likely be rejected)
 release_settle_s = 0.30   # wait after opening before retreating
 retreat_up_m = 0.08       # retreat: tool this far above the neck top ...
 retreat_back_m = 0.05     #   ... and this far back toward the robot
+# -- grasp style --
+# "wall"  pinch the ring's downstream wall, one finger inside the hole. That finger cannot
+#         pass the bottle neck, so the ring is released above the neck top and falls ~54 mm.
+# "outer" pinch across the ring's outer diameter (80 mm; the gripper opens to 85 mm). Both
+#         fingers stay outside the bottle, so the ring is lowered onto the shoulder.
+grasp = "outer"
+
+[manipulation.grasps.wall]
+offset_along_belt_m = 0.032    # tool point relative to the ring centre (mid-wall, downstream)
+offset_toward_belt_m = 0.0
+offset_up_m = 0.001
+preshape = 120                 # Robotiq command while approaching, 0 (open) .. 255
+detect_min = 0.55              # measured finger closure (0..1) that means "holding the ring";
+detect_max = 0.93              #   an empty gripper closes to ~0.98
+release_above_seat_m = 0.0544  # ring centre above its seated height at release (7 mm above the neck top)
+
+[manipulation.grasps.outer]
+offset_along_belt_m = 0.0
+offset_toward_belt_m = 0.0025  # puts the strip of the tilted, open pad that is level with the ring on its diameter (found by test)
+offset_up_m = -0.010           # open pads sit ~12 mm above the tool point; brings them 1.5 mm above the tray
+preshape = 0
+detect_min = 0.02
+detect_max = 0.30
+release_above_seat_m = 0.002
 
 [mission]
 assemblies_per_station = 5
