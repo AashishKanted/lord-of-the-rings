@@ -5,7 +5,9 @@
     python -m frodo camera [--camera NAME]  save RGB-D frames from one camera
     python -m frodo demo [--video FILE]     ORACLE pick-and-place demo
     python -m frodo sensors [--out DIR]     drive a scripted twist, dump lidar/camera/odometry
-    python -m frodo mission [--scenario S]  full mission (not implemented yet)
+    python -m frodo nav [--mujoco]          base-only localization + navigation run
+    python -m frodo line [--seconds N]      plant-only customer line run
+    python -m frodo mission [--seed N]      full mission: plant + robot, A then B
 """
 from __future__ import annotations
 
@@ -30,16 +32,11 @@ def main() -> None:
     elif command == "sensors":
         from .apps.sensors_demo import main as run
     elif command == "mission":
-        import argparse
-
-        from .apps.mission import run as mission
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--scenario", default="nominal")
-        parser.add_argument("--out", default=None)
-        args = parser.parse_args()
-
-        def run():
-            mission(args.scenario, args.out or f"results/{args.scenario}")
+        from .apps.mission import main as run
+    elif command == "nav":
+        from .apps.nav_demo import main as run
+    elif command == "line":
+        from .apps.line_demo import main as run
     else:
         sys.exit(f"unknown command '{command}'\n{__doc__}")
     run()
