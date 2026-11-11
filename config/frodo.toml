@@ -171,3 +171,17 @@ release_radial_m = 0.001  # ring-over-neck error allowed at release
 [mission]
 assemblies_per_station = 5
 station_order = ["A", "B"]
+
+# ---- customer line (frodo.plant); uses simulator ground truth, never robot decisions ----
+[plant]
+plc_host = "127.0.0.1"
+plc_port = 1502                   # INTERFACES.md default; 0 = pick a free port (tests)
+pool_size = 4                     # kit bodies per station, recycled; minimum is checked
+magazine_gap_m = 0.30             # clear space between the belt's upstream end and the parked pool
+magazine_spacing_m = 0.02         # gap between parked kits
+carrier_position_gain_per_s = 20.0  # keeps each carrier on the belt's position, not just its speed
+first_kit_id = 1
+release_phase_range_s = [0.0, 1.0]  # ACCEPTANCE.md: first release this long after readiness
+ring_tray_contact_segments = 12   # of the ring's 48 collision segments, how many touch a tray
+seat_raw_log = true               # per-step seat samples (seat_samples.jsonl) for hold recompute
+demo_duration_s = 60.0            # plant-only demo length (line_demo)
