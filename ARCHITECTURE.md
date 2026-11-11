@@ -32,34 +32,78 @@ runs in one process and one deterministic loop, with the plant's PLC server on a
 | Path | Role | State |
 |---|---|---|
 | `config/frodo.toml` | every tunable; customer numbers stay in `spec/` | in use |
-| `scripts/run.sh` | launcher: `view`, `render`, `camera`, `demo`, `mission` | in use |
-| `frodo/config.py`, `log.py` | config loader; logger with `file:line` | done |
+| `scripts/run.sh` | launcher: `view`, `render`, `camera`, `demo`, `sensors`, `nav`, `line`, `mission` | in use |
+| `frodo/config.py`, `log.py` | config loader (`with_overrides` for tests); logger with `file:line` | done |
 | `frodo/cell.py` | read-only customer spec, station frames | done |
 | `frodo/interfaces.py` | sensor/command dataclasses, `Mode` | done |
 | `frodo/sim/scene.py`, `camera.py`, `grasp.py` | cell model, RGB-D camera, grasp constraint | done |
-| `frodo/sim/sensors.py`, `actuation.py` | sensor suite, command bridge | placeholder |
-| `frodo/plant/inspection.py` | independent seat measurement | done |
-| `frodo/plant/line.py` | feeder, PLC, event log, scenarios | placeholder |
-| `frodo/robot/manipulation/` | IK, grasp geometry, motion profile | done (oracle demo only) |
-| `frodo/robot/localization/` | EKF + scan-to-map ICP | placeholder |
-| `frodo/robot/perception/` | classical ring/bottle detector | placeholder |
-| `frodo/robot/navigation/` | A* planner, path tracker, docking | placeholder |
+| `frodo/sim/sensors.py`, `lidar.py`, `actuation.py` | sensor suite, command bridge | done |
+| `frodo/sim/oracle.py` | ORACLE kit poses for the oracle perception backend | done |
+| `frodo/plant/line.py`, `feeder.py`, `plc.py`, `events.py` | belts, feeder, PLC host, evidence log | done (nominal only) |
+| `frodo/plant/inspection.py`, `recorder.py` | independent seat measurement; measured motion samples | done |
+| `frodo/robot/localization/` | EKF + scan-to-map ICP | done |
+| `frodo/robot/navigation/` | A* planner, path tracker, docking, `Navigator` | done (no obstacle reaction) |
+| `frodo/robot/frames.py` | station geometry in the robot base frame | done |
+| `frodo/robot/perception/` | detector backends, belt-encoder tracker, `Perception` facade | scaffold: ORACLE backend only |
+| `frodo/robot/manipulation/` | IK, motion profiles, `ArmController` (stow, pick-and-place cycle) | done |
+| `frodo/robot/plc.py` | Modbus line client with sequence/retry rule | done |
+| `frodo/robot/orchestrator/` | mission mode machine | done (nominal only) |
 | `frodo/robot/safety/` | independent slow/stop supervisor | placeholder |
-| `frodo/robot/orchestrator/` | mission mode machine | placeholder |
-| `frodo/robot/plc.py` | Modbus line client | placeholder |
-| `frodo/apps/pick_place_demo.py` | ORACLE-pose manipulation demo | done |
-| `frodo/apps/mission.py` | full mission runner | placeholder |
+| `frodo/apps/mission.py` | full mission runner | done (nominal scenario) |
+| `frodo/apps/pick_place_demo.py`, `nav_demo.py`, `line_demo.py`, `sensors_demo.py` | single-subsystem demos | done |
+
+Not built yet: safety monitor, sensor-driven perception, human-stop and PLC-retry
+scenarios.
 
 ## Control tick
 
 ```
-frame   = sensors.read(data)
-pose    = localization.update(frame)
-kit     = perception.detect(frame.camera)
-wanted  = active controller for the current Mode (tracker / docking / manipulation)
-command = safety.filter(frame, wanted)      # always last, uses raw lidar
-bridge.apply(data, command); step physics; plant.line.step(data)
+frame   = sensors.read(data)                 # + ORACLE kit poses when perception.method = "oracle"
+command = orchestrator.step(frame)
+    pose = localizer.update(frame)
+    poll the line controller (10 Hz): arrivals, inspection results, accepted counts
+    NAVIGATE / DOCK : navigator.step(pose)            arm stowed
+    MANIPULATE      : perception.update(frame) -> arm.step(joints, tracked kit)
+    STOW            : arm folds, then the next station is chosen
+    (safety.filter will wrap the result; not implemented yet)
+bridge.apply(data, command); step physics; plant.line.step(data) every physics step
 ```
+
+## Mission flow
+
+```
+IDLE -> NAVIGATE -> DOCK -> MANIPULATE -> STOW -> NAVIGATE -> DOCK -> MANIPULATE -> STOW -> DONE
+```
+
+- On docking the orchestrator sends READY, builds the `StationFrame` from the localizer's
+  pose, unstows the arm and starts perception.
+- A cycle starts when the line controller reports a new arrival id; the kit just inside
+  the work window is bound to that id.
+- `ASSEMBLY_DONE` is sent when the arm lets go of the ring inside the work window. It is
+  the robot's claim. Acceptance is decided by the plant's own seat measurement at the
+  downstream inspection, and the robot learns it only from the registers.
+- `mission.leave_policy` chooses when to leave a station: `after_accepted` (default) waits
+  for the full batch to be accepted; `after_done` leaves once the batch is reported done,
+  waits at the next station's pre-dock pose until the batch is accepted, and turns back if
+  a kit is rejected.
+
+## Perception interface
+
+`Perception.start(station_frame)` / `stop()` are called by the orchestrator. While active,
+`update(frame)` runs a detector backend (`perception.method`) and a tracker that carries
+each kit forward with the conveyor encoder between detections. Consumers get
+`KitObservation`s (ring centre, bottle base, belt velocity, age) in the robot base frame.
+A new detector implements `Detector.detect(frame, station) -> list[KitDetection]`; nothing
+downstream changes.
+
+## Arm controller
+
+Cartesian IK tracker in the base frame: a phase machine sets a tool goal relative to a
+frame riding on the belt (the ring's grasp point, then the bottle), a speed- and
+acceleration-limited setpoint moves toward it, the belt velocity is added as a short lead,
+and differential IK produces joint targets. Before release the observed ring-over-neck
+error is integrated out. Stow and unstow are joint-space moves through the home posture.
+The waiting pose is above bottle height so that bottles pass under the gripper.
 
 ## How modules talk (no message bus)
 
@@ -86,5 +130,10 @@ feeds perception, as the customer allows one.
 
 ## Honesty markers
 
-`apps/pick_place_demo.py` is an ORACLE run: true poses, robot pre-docked. It is not a
-sensor-driven result and produces no acceptance evidence.
+- `apps/pick_place_demo.py` is an ORACLE run: true poses, robot pre-docked.
+- With `perception.method = "oracle"` (the current default) the mission runner gives the
+  robot true kit poses. `summary.json` says so in its `perception` field. Localization
+  and navigation in that run are sensor-driven; perception is not.
+- `apps/nav_demo.py` and `apps/line_demo.py` exercise one subsystem each and produce no
+  acceptance evidence.
+- A passing `systems-check` on `events.jsonl` shows log consistency only.
