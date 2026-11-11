@@ -3,7 +3,8 @@
     uv run python -m frodo.sim.camera --camera wrist --out results/camera
 
 MuJoCo camera frame convention: looks along -z, +x is image right, +y is image up.
-Depth images are metres along the optical axis (not ray length).
+Depth images are metres along the optical axis (not ray length). `RgbdFrame.cam_in_base`
+(what robot code receives) uses the optical convention instead: x right, y down, z forward.
 """
 from __future__ import annotations
 
@@ -13,28 +14,55 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+# MuJoCo camera axes (x right, y up, z backward) -> optical axes (x right, y down, z forward).
+MJ_TO_OPTICAL = np.diag([1.0, -1.0, -1.0])
+
 
 class RgbdCamera:
-    def __init__(self, model, name: str, width: int = 640, height: int = 480):
+    """One named MuJoCo camera. Several cameras of the same resolution can share one
+    `mujoco.Renderer` (pass it in); otherwise a renderer is created on the first read."""
+
+    def __init__(self, model, name: str, width: int = 640, height: int = 480, renderer=None):
         self.model, self.name, self.width, self.height = model, name, width, height
         self.cam_id = model.camera(name).id
-        self._rgb = mujoco.Renderer(model, height, width)
-        self._depth = mujoco.Renderer(model, height, width)
-        self._depth.enable_depth_rendering()
+        self._renderer, self._owns_renderer = renderer, renderer is None
         # Pinhole intrinsics from the vertical field of view (square pixels).
         fovy = np.deg2rad(model.cam_fovy[self.cam_id])
         self.fy = self.fx = 0.5 * height / np.tan(fovy / 2)
         self.cx, self.cy = width / 2, height / 2
 
+    @property
+    def intrinsics(self) -> tuple[float, float, float, float]:
+        return float(self.fx), float(self.fy), float(self.cx), float(self.cy)
+
     def read(self, data):
-        """Return (rgb uint8 HxWx3, depth float32 HxW in metres)."""
-        self._rgb.update_scene(data, camera=self.cam_id)
-        self._depth.update_scene(data, camera=self.cam_id)
-        return self._rgb.render().copy(), self._depth.render().copy()
+        """Return (rgb uint8 HxWx3, depth float32 HxW in metres along the optical axis).
+        Raw render: no noise, depth at the far clip plane where nothing is hit."""
+        if self._renderer is None:
+            self._renderer = mujoco.Renderer(self.model, self.height, self.width)
+        r = self._renderer
+        r.update_scene(data, camera=self.cam_id)
+        rgb = r.render().copy()
+        r.enable_depth_rendering()
+        try:
+            depth = r.render().copy()
+        finally:
+            r.disable_depth_rendering()
+        return rgb, depth
 
     def pose(self, data):
         """Camera position and 3x3 rotation (camera axes as columns) in the world."""
         return data.cam_xpos[self.cam_id].copy(), data.cam_xmat[self.cam_id].reshape(3, 3).copy()
+
+    def cam_in_base(self, data, base_body_id: int) -> np.ndarray:
+        """4x4 pose of the camera OPTICAL frame (x right, y down, z forward) in the frame of
+        body `base_body_id`. For a camera on the arm this is the robot's forward kinematics."""
+        pos, rot = self.pose(data)
+        base_pos, base_rot = data.xpos[base_body_id], data.xmat[base_body_id].reshape(3, 3)
+        out = np.eye(4)
+        out[:3, :3] = base_rot.T @ rot @ MJ_TO_OPTICAL
+        out[:3, 3] = base_rot.T @ (pos - base_pos)
+        return out
 
     def deproject(self, data, u, v, depth):
         """Pixel(s) (u right, v down) + depth -> world xyz."""
@@ -53,8 +81,9 @@ class RgbdCamera:
                 depth)
 
     def close(self):
-        self._rgb.close()
-        self._depth.close()
+        if self._owns_renderer and self._renderer is not None:
+            self._renderer.close()
+        self._renderer = None
 
 
 def depth_to_image(depth, max_m=2.0):

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Launcher for the frodo solution.
-#   scripts/run.sh [-c CONFIG.toml] <view|render|camera|demo|mission> [args...]
+#   scripts/run.sh [-c CONFIG.toml] <view|render|camera|demo|sensors|mission> [args...]
 # Examples:
 #   scripts/run.sh view --dock A
 #   scripts/run.sh demo --video results/demo/pick_place.mp4
+#   scripts/run.sh sensors                 # lidar plot, camera frames, odometry drift -> results/sensors/
 #   scripts/run.sh -c config/fast_belt.toml demo
 set -euo pipefail
 cd "$(dirname "$0")/.."
