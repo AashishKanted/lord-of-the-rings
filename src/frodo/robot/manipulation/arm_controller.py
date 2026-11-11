@@ -1,0 +1,317 @@
+"""Arm controller: stow / unstow and the pick-and-place cycle on a moving kit.
+
+Everything is in the robot base frame. Inputs each tick are the measured joints and the
+tracked `KitObservation` of the kit being worked on; the output is joint targets and a
+gripper command. The controller never sees simulator state.
+
+Cartesian IK tracker: a phase machine picks a tool goal relative to a moving reference
+(the ring's grasp point, then the bottle). A speed/acceleration-limited setpoint (`Slew`)
+moves toward that goal in the moving frame, the belt velocity is added as a short lead,
+and differential IK (`ArmIK`) turns the result into joint targets.
+
+    STOWED -UNSTOWING-> WAITING -begin()-> PREGRASP -> DESCEND -> CLOSE -> LIFT
+        -> TRANSFER -> LOWER (closed-loop centring) -> RELEASE -> RETREAT -> RETURN -> WAITING
+    WAITING -STOWING-> STOWED
+
+Stow and unstow are joint-space moves through the home posture.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+
+import numpy as np
+
+from ...cell import CELL, KIT_TOP_Z
+from ...config import get_config
+from ...interfaces import JointState
+from ...log import get_logger
+from ..description import ARM_HOME, ARM_JOINTS, ARM_STOWED
+from ..frames import StationFrame
+from ..perception.types import KitObservation
+from .ik import WALL_MID, ArmFK, ArmIK, tool_rotation_from_axes
+from .motion import JointMove, Slew
+
+log = get_logger(__name__)
+NECK_TOP = CELL["bottle"]["height_m"]
+_KIT = CELL["kit"]
+RING_AHEAD_OF_BOTTLE = _KIT["ring_xy_in_kit_m"][0] - _KIT["bottle_xy_in_kit_m"][0]
+REACHED_M = 1e-4
+
+
+class ArmPhase(Enum):
+    STOWED = "stowed"
+    UNSTOWING = "unstowing"
+    WAITING = "waiting"        # hovering over the ring lane, ready for `begin`
+    PREGRASP = "pregrasp"
+    DESCEND = "descend"
+    CLOSE = "close"
+    LIFT = "lift"
+    TRANSFER = "transfer"
+    LOWER = "lower"
+    RELEASE = "release"
+    RETREAT = "retreat"
+    RETURN = "return"
+    STOWING = "stowing"
+
+
+CARRYING = (ArmPhase.LIFT, ArmPhase.TRANSFER, ArmPhase.LOWER)
+
+
+@dataclass
+class ArmCommand:
+    arm_q: np.ndarray
+    gripper: float                # 0 open .. 1 closed
+    request_grasp: bool = False
+    release_grasp: bool = False
+
+
+@dataclass
+class CycleResult:
+    track_id: int
+    started_t: float
+    grasped_t: float | None = None
+    released_t: float | None = None
+    ended_t: float | None = None
+    release_radial_m: float | None = None   # observed ring-over-neck error at release
+    failure: str | None = None
+
+
+class ArmController:
+    def __init__(self, kin_model, config=None):
+        """``kin_model`` is the robot's own kinematic model (MuJoCo model of the robot)."""
+        cfg = config or get_config()
+        self.m = cfg.manipulation
+        self.model = kin_model
+        self.phase = ArmPhase.STOWED
+        self.station: StationFrame | None = None
+        self.ik: ArmIK | None = None
+        self.fk: ArmFK | None = None
+        self.q_ready: np.ndarray | None = None
+        self.hover: np.ndarray | None = None
+        self.cycle: CycleResult | None = None     # the cycle in progress
+        self.last_cycle: CycleResult | None = None
+        self.released_event = False               # True for the one tick the ring is let go
+        self._q_cmd = ARM_STOWED.copy()
+        self._move: JointMove | None = None
+        self._slew: Slew | None = None
+        self._origin = np.zeros(3)
+        self._reference = "base"        # what `_origin` rides on: "base", "ring" or "bottle"
+        self._phase_t0 = 0.0
+        self._last_gripper = 0.0
+        self._open = self.m.grip_preshape / 255.0
+        self._closed = self.m.grip_closed / 255.0
+
+    # ---- station setup ----
+    def set_station(self, station: StationFrame) -> None:
+        """Prepare IK and the waiting pose for a station (call when docked, arm stowed)."""
+        self.station = station
+        # horizontal unit vector from the robot toward the belt, perpendicular to belt travel
+        toward = station.lateral if station.center[:2] @ station.lateral[:2] > 0 else -station.lateral
+        self._toward_belt = toward
+        rot = tool_rotation_from_axes(station.belt_dir, toward)
+        q = self.model.qpos0.copy()
+        q[[self.model.joint(j).qposadr[0] for j in ARM_JOINTS]] = ARM_HOME
+        self.ik, self.fk = ArmIK(self.model, q, rot), ArmFK(self.model, rot)
+        ring_x_at_entry = CELL["conveyor"]["work_entry_local_x_m"] + RING_AHEAD_OF_BOTTLE
+        self.hover = station.point(ring_x_at_entry + self.m.hover_ahead_m + WALL_MID,
+                                   _KIT["ring_xy_in_kit_m"][1], KIT_TOP_Z + self.m.hover_height_m)
+        # Each round also re-centres the IK's posture preference on the result, so repeat
+        # until the waiting pose is actually reached.
+        for _ in range(6):
+            self.q_ready = self.ik.solve_static(self.hover).copy()
+            if np.linalg.norm(self.ik.tcp() - self.hover) < 1e-4:
+                break
+        else:
+            log.warning("waiting pose at station %s only reached to %.1f mm", station.name,
+                        1e3 * np.linalg.norm(self.ik.tcp() - self.hover))
+
+    # ---- requests ----
+    @property
+    def waiting(self) -> bool:
+        return self.phase is ArmPhase.WAITING
+
+    @property
+    def stowed(self) -> bool:
+        return self.phase is ArmPhase.STOWED
+
+    def unstow(self) -> None:
+        if self.phase is not ArmPhase.STOWED or self.q_ready is None:
+            raise RuntimeError(f"cannot unstow from {self.phase} (station set: {self.station})")
+        self._move = JointMove([self._q_cmd, ARM_HOME, self.q_ready], self.m.joint_speed_radps)
+        self.phase = ArmPhase.UNSTOWING
+
+    def stow(self) -> None:
+        if self.phase is ArmPhase.STOWED:
+            return
+        if self.phase is not ArmPhase.WAITING:
+            raise RuntimeError(f"cannot stow from {self.phase}")
+        self._move = JointMove([self._q_cmd, ARM_HOME, ARM_STOWED], self.m.joint_speed_radps)
+        self.phase = ArmPhase.STOWING
+
+    def begin(self, track_id: int, t: float) -> None:
+        """Start a pick-and-place cycle on a tracked kit."""
+        if self.phase is not ArmPhase.WAITING:
+            raise RuntimeError(f"cannot begin a cycle from {self.phase}")
+        self.cycle = CycleResult(track_id, t)
+        self._grasp_offset, self._trim, self._centred_s = np.zeros(3), np.zeros(3), 0.0
+        self._gripped_ticks = 0
+        self._enter(ArmPhase.PREGRASP, t)
+
+    # ---- per-tick ----
+    def step(self, joints: JointState, obs: KitObservation | None, t: float,
+             dt: float) -> ArmCommand:
+        self.released_event = False
+        gripper_rate = (joints.gripper - self._last_gripper) / dt
+        self._last_gripper = joints.gripper
+        if self.phase is ArmPhase.STOWED:
+            return ArmCommand(self._q_cmd, self._open)
+        if self.phase in (ArmPhase.UNSTOWING, ArmPhase.STOWING):
+            return self._joint_move(t, dt)
+        if self.phase is ArmPhase.WAITING:
+            return self._track(self._slew.step(self.hover, dt), dt, self._open)
+        if self.phase is ArmPhase.RETURN:
+            rel = self._slew.step(self.hover, dt)
+            if np.linalg.norm(rel - self.hover) < REACHED_M:
+                self._finish(t)
+            return self._track(rel, dt, self._open)
+        if obs is None:
+            return self._abort(t, dt, "kit track lost")
+        return self._cycle(joints, obs, t, dt, gripper_rate)
+
+    # ---- joint-space moves ----
+    def _joint_move(self, t: float, dt: float) -> ArmCommand:
+        self._q_cmd = self._move.step(dt)
+        if self._move.done:
+            if self.phase is ArmPhase.UNSTOWING:
+                self.ik.set_arm(self._q_cmd)
+                self._slew, self._origin, self._reference = Slew(self.ik.tcp()), np.zeros(3), "base"
+                self._enter(ArmPhase.WAITING, t)
+            else:
+                self._enter(ArmPhase.STOWED, t)
+            self._move = None
+        return ArmCommand(self._q_cmd, self._open)
+
+    # ---- Cartesian cycle ----
+    def _cycle(self, joints, obs, t, dt, gripper_rate) -> ArmCommand:
+        m, belt = self.m, self.station.belt_dir
+        ring, bottle = obs.ring_in_base, obs.bottle_in_base
+        grasp_point = ring + belt * WALL_MID + [0, 0, 0.001]    # downstream wall of the ring
+        tcp = self.fk.tcp(joints.arm_q)                          # measured tool point
+        in_phase = t - self._phase_t0
+        command = ArmCommand(self._q_cmd, self._open)
+        phase = self.phase
+        # The setpoint lives in a frame that rides on the belt: the ring's grasp point until
+        # the ring is held, the bottle afterwards.
+        self._follow("ring" if phase in (ArmPhase.PREGRASP, ArmPhase.DESCEND, ArmPhase.CLOSE)
+                     else "bottle", grasp_point if phase in
+                     (ArmPhase.PREGRASP, ArmPhase.DESCEND, ArmPhase.CLOSE) else bottle)
+
+        if phase is ArmPhase.PREGRASP:
+            goal = np.array([0, 0, m.pregrasp_height_m])
+            if self._at(goal):
+                self._enter(ArmPhase.DESCEND, t)
+        elif phase is ArmPhase.DESCEND:
+            goal = np.zeros(3)
+            if self._at(goal) and np.linalg.norm(tcp - grasp_point) < m.grasp_position_tol_m:
+                self._enter(ArmPhase.CLOSE, t)
+        elif phase is ArmPhase.CLOSE:
+            goal = np.zeros(3)
+            command.gripper = self._closed
+            # Grasp check from the robot's own sensors: the fingers have stopped on something
+            # of about the ring wall's width (an empty gripper closes further), with the tool
+            # still at the planned grasp point. Only then is the grasp constraint requested.
+            gripped = (in_phase > m.grasp_settle_s and abs(gripper_rate) < m.grasp_still_rate_per_s
+                       and m.grasp_detect_min <= joints.gripper <= m.grasp_detect_max
+                       and np.linalg.norm(tcp - grasp_point) < 2 * m.grasp_position_tol_m)
+            command.request_grasp = gripped
+            self._gripped_ticks = self._gripped_ticks + 1 if gripped else 0
+            if self._gripped_ticks >= 2:      # the request has been sent for one full tick
+                self._grasp_offset = tcp - ring
+                self.cycle.grasped_t = t
+                self._follow("bottle", bottle)
+                goal = self._slew.p
+                self._enter(ArmPhase.LIFT, t)
+            elif in_phase > m.grasp_timeout_s:
+                return self._abort(t, dt, f"no grasp detected (gripper at {joints.gripper:.2f})")
+        elif phase in CARRYING:
+            command.gripper = self._closed
+            lift_z, release_z = NECK_TOP + m.carry_clearance_m, NECK_TOP + m.release_height_m
+            ring_goal = {ArmPhase.LIFT: RING_AHEAD_OF_BOTTLE * belt + [0, 0, lift_z],
+                         ArmPhase.TRANSFER: np.array([0, 0, lift_z]),
+                         ArmPhase.LOWER: np.array([0, 0, release_z])}[phase]
+            goal = ring_goal + self._grasp_offset + self._trim
+            if self._at(goal):
+                if phase is ArmPhase.LIFT:
+                    self._enter(ArmPhase.TRANSFER, t)
+                elif phase is ArmPhase.TRANSFER:
+                    self._enter(ArmPhase.LOWER, t)
+                else:
+                    # The seat only self-centres within ~2 mm, so servo the observed
+                    # ring-over-neck error out (integral action) before letting go.
+                    error = (bottle - ring)[:2]
+                    radial = float(np.linalg.norm(error))
+                    self._trim[:2] += m.place_trim_gain_per_s * dt * error
+                    self._centred_s = self._centred_s + dt if radial < m.release_radial_m else 0.0
+                    timed_out = in_phase > m.place_timeout_s
+                    if self._centred_s >= m.release_dwell_s or timed_out:
+                        if timed_out:
+                            log.warning("t=%.2f releasing uncentred after %.1f s: %.1f mm off",
+                                        t, in_phase, 1e3 * radial)
+                        self.cycle.released_t, self.cycle.release_radial_m = t, radial
+                        self.released_event = True
+                        self._enter(ArmPhase.RELEASE, t)
+        elif phase is ArmPhase.RELEASE:
+            goal = self._slew.p
+            command.release_grasp = True
+            if in_phase > m.release_settle_s:
+                self._enter(ArmPhase.RETREAT, t)
+        else:   # RETREAT: straight up and back from the bottle, still moving with the belt
+            goal = np.array([0, 0, NECK_TOP + m.retreat_up_m]) + self._grasp_offset \
+                - m.retreat_back_m * self._toward_belt
+            if self._at(goal):
+                self._follow("base", np.zeros(3))
+                self._enter(ArmPhase.RETURN, t)
+        if self.phase is ArmPhase.RELEASE:
+            command.release_grasp = True
+        rel = self._slew.step(goal, dt) if self.phase is not ArmPhase.RETURN else self._slew.p
+        lead = obs.belt_velocity * m.belt_lead_s
+        command.arm_q = self._q_cmd = self.ik.step(self._origin + rel + lead, dt)
+        return command
+
+    def _abort(self, t: float, dt: float, reason: str) -> ArmCommand:
+        """Give up on the current kit: open the gripper and go back to the waiting pose."""
+        log.warning("t=%.2f cycle on track %d aborted in %s: %s", t, self.cycle.track_id,
+                    self.phase.value, reason)
+        self.cycle.failure = reason
+        self._follow("base", np.zeros(3))
+        self._enter(ArmPhase.RETURN, t)
+        command = self._track(self._slew.step(self.hover, dt), dt, self._open)
+        command.release_grasp = True
+        return command
+
+    def _finish(self, t: float) -> None:
+        self.cycle.ended_t = t
+        self.last_cycle, self.cycle = self.cycle, None
+        self._enter(ArmPhase.WAITING, t)
+
+    # ---- helpers ----
+    def _track(self, target, dt: float, gripper: float) -> ArmCommand:
+        self._q_cmd = self.ik.step(self._origin + target, dt)
+        return ArmCommand(self._q_cmd, gripper)
+
+    def _at(self, goal) -> bool:
+        return bool(np.linalg.norm(self._slew.p - goal) < REACHED_M)
+
+    def _follow(self, reference: str, origin) -> None:
+        """Set the moving reference frame's origin. Switching to another reference keeps
+        the commanded point where it is; the same reference just carries it along."""
+        origin = np.asarray(origin, float)
+        if reference != self._reference:
+            self._slew.p = self._slew.p + self._origin - origin
+            self._reference = reference
+        self._origin = origin
+
+    def _enter(self, phase: ArmPhase, t: float) -> None:
+        log.debug("t=%.2f arm %s -> %s", t, self.phase.value, phase.value)
+        self.phase, self._phase_t0 = phase, t
