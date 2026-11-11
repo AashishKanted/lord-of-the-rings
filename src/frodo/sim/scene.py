@@ -11,10 +11,11 @@ is retained on the kit; the ring is a free rigid body resting on the kit.
 from __future__ import annotations
 
 import argparse
-from math import cos, pi, sin
+from math import cos, pi, radians, sin
 from pathlib import Path
 
 import mujoco
+import numpy as np
 
 from ..cell import CELL, KIT_TOP_Z, STATIONS, Station
 from ..config import ROOT, get_config
@@ -34,6 +35,9 @@ PART_CONTACT = dict(friction=[.5, .005, .0001], solref=[.01, 1], solimp=[.95, .9
 
 BOX, CYL, MESH, PLANE = (mujoco.mjtGeom.mjGEOM_BOX, mujoco.mjtGeom.mjGEOM_CYLINDER,
                          mujoco.mjtGeom.mjGEOM_MESH, mujoco.mjtGeom.mjGEOM_PLANE)
+VISUAL_GROUP = 2          # geoms in this group are decoration: no collision, invisible to lidar
+LIDAR_SITE_PREFIX = "lidar_"
+BASE_TOP_Z = 0.325        # top plate of the TidyBot base (Menagerie mesh), where the mast stands
 
 
 def _yaw_quat(yaw):
@@ -132,6 +136,45 @@ def add_kit(spec, st: Station, kit_name: str, local_x: float = 0.0):
     return kit_name
 
 
+def mast_camera_quat(yaw_deg: float, pitch_deg: float):
+    """Orientation (in the base frame) of a MuJoCo camera whose optical axis has heading
+    `yaw_deg` and is tilted `pitch_deg` below the horizontal, image upright."""
+    yaw, pitch = radians(yaw_deg), radians(pitch_deg)
+    right = [sin(yaw), -cos(yaw), 0.0]                                   # camera +x
+    up = [cos(yaw) * sin(pitch), sin(yaw) * sin(pitch), cos(pitch)]      # camera +y
+    back = [-cos(yaw) * cos(pitch), -sin(yaw) * cos(pitch), sin(pitch)]  # camera +z
+    quat = np.zeros(4)
+    mujoco.mju_mat2Quat(quat, np.array([right, up, back]).T.flatten())
+    return quat
+
+
+def _add_robot_sensors(spec):
+    """Sensor mounts on the mobile base: lidar sites + pucks and the mast camera.
+
+    Poses come from [sensors.lidar] and [sensors.cameras.mast]. The simulated sensors in
+    ``frodo.sim.sensors`` read these mounts back from the compiled model.
+    """
+    sensors = get_config().sensors
+    base = spec.body("base_link")
+    decoration = dict(contype=0, conaffinity=0, group=VISUAL_GROUP, mass=0)
+    lidar = sensors.lidar
+    for mount in lidar.mounts:
+        pos = [mount.x, mount.y, lidar.height_m]
+        base.add_site(name=f"{LIDAR_SITE_PREFIX}{mount.name}", pos=pos,
+                      quat=_yaw_quat(radians(mount.yaw_deg)))
+        base.add_geom(name=f"lidar_{mount.name}_puck", type=CYL, pos=pos, size=[.03, .02, 0],
+                      rgba=[.9, .45, .05, 1], **decoration)
+    mast = sensors.cameras.mast
+    x, y, z = mast.pos_m
+    # The post is a real obstacle for the arm, so it collides like the rest of the robot.
+    base.add_geom(name="mast_post", type=CYL, mass=0.5, rgba=[.2, .2, .22, 1], size=[.012, 0, 0],
+                  fromto=[x, y, BASE_TOP_Z, x, y, z - 0.03])
+    base.add_geom(name="mast_head", type=BOX, pos=[x, y, z], size=[.02, .045, .015],
+                  rgba=[.1, .1, .1, 1], **decoration)
+    base.add_camera(name="mast", pos=[x, y, z], fovy=mast.fovy_deg,
+                    quat=mast_camera_quat(mast.yaw_deg, mast.pitch_deg))
+
+
 def build_spec(kits: dict[str, list[float]] | None = None) -> mujoco.MjSpec:
     """kits maps station name -> list of initial kit local-x positions."""
     spec = mujoco.MjSpec.from_file(str(TIDYBOT_XML))
@@ -160,6 +203,7 @@ def build_spec(kits: dict[str, list[float]] | None = None) -> mujoco.MjSpec:
                                     pos=[0, 0, arm_base.pos[2] + ARM_RISER_M / 2],
                                     size=[.06, .06, ARM_RISER_M / 2])
     arm_base.pos[2] += ARM_RISER_M
+    _add_robot_sensors(spec)
     spec.visual.global_.offwidth, spec.visual.global_.offheight = 1280, 960
     for station, xs in (kits or {}).items():
         for i, x in enumerate(xs):

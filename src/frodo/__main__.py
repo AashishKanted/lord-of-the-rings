@@ -4,6 +4,7 @@
     python -m frodo render OUT.png          headless snapshot
     python -m frodo camera [--camera NAME]  save RGB-D frames from one camera
     python -m frodo demo [--video FILE]     ORACLE pick-and-place demo
+    python -m frodo sensors [--out DIR]     drive a scripted twist, dump lidar/camera/odometry
     python -m frodo mission [--scenario S]  full mission (not implemented yet)
 """
 from __future__ import annotations
@@ -26,6 +27,8 @@ def main() -> None:
         from .sim.camera import main as run
     elif command == "demo":
         from .apps.pick_place_demo import main as run
+    elif command == "sensors":
+        from .apps.sensors_demo import main as run
     elif command == "mission":
         import argparse
 

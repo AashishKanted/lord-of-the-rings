@@ -15,8 +15,10 @@ seed = 0
 arm_riser_m = 0.40        # spacer column under the arm (documented robot modification)
 
 # ---- sensors (simulated in frodo.sim, consumed only through frodo.interfaces) ----
+# Every message is stamped with its capture time; `latency_s` delays its delivery.
 [sensors.lidar]           # two low 2D lidars on opposite base corners -> 360 deg cover
 rate_hz = 10.0
+latency_s = 0.01
 height_m = 0.12
 range_max_m = 8.0
 range_noise_std_m = 0.005
@@ -29,48 +31,121 @@ mounts = [                # x, y in base frame (m), yaw (deg) of the sensor's fo
 
 [sensors.odometry]
 rate_hz = 100.0
-noise_std_frac = 0.01     # per-axis velocity noise as a fraction of speed
+latency_s = 0.0
+noise_std_frac = 0.01     # per-axis white velocity noise as a fraction of speed
+scale_error_std_frac = 0.005  # per-axis constant scale error (wheel radius), drawn from seed
 
 [sensors.imu]
 rate_hz = 100.0
+latency_s = 0.0
 gyro_noise_std_radps = 0.002
 gyro_bias_radps = 0.0005
+accel_noise_std_mps2 = 0.02
+
+[sensors.joints]          # arm encoders and gripper position, every control tick
+position_noise_std_rad = 0.00002
+
+[sensors.conveyor]        # belt encoder per station
+rate_hz = 50.0
+latency_s = 0.0
+speed_noise_std_mps = 0.0002
+resolution_m = 0.0001     # encoder count size
 
 [sensors.cameras]
 # The customer allows ONE RGB-D camera for the robot. Both mounts exist in the scene so
-# they can be compared; only `perception_source` is fed to the perception pipeline.
+# they can be compared; only `perception_source` is rendered each sample and fed to the
+# perception pipeline. Other enabled cameras render only on request (demos, debugging).
 enabled = ["wrist", "mast"]
 perception_source = "mast"
 width = 640
 height = 480
 rate_hz = 15.0
-depth_noise_std_m = 0.001
+latency_s = 0.03
+depth_noise_std_m = 0.001 # at 1 m; grows with the square of depth
+depth_range_m = [0.10, 5.0]   # outside this the depth pixel is 0 (no return)
 
 [sensors.cameras.mast]    # fixed post on the base, looking down at the work window
-pos_m = [0.20, 0.0, 1.55]
-pitch_deg = 60.0          # downward tilt from horizontal
+pos_m = [0.20, -0.20, 1.50]   # camera centre in the base frame; the post stands under it
+yaw_deg = 20.0            # heading of the optical axis in the base frame
+pitch_deg = 50.0          # downward tilt from horizontal
 fovy_deg = 60.0
+
+# ---- actuators (frodo.sim.actuation: what the drives can physically do) ----
+[actuation]
+max_linear_mps = 0.5
+max_angular_radps = 1.0
+max_linear_accel_mps2 = 1.0
+max_angular_accel_radps2 = 3.0
+velocity_feedforward = true     # lead the position servos so they track velocity without lag
+max_following_error_m = 0.05    # servo target never runs further than this from the base
+max_following_error_rad = 0.10
+grasp_min_gripper_cmd = 0.9     # gripper command (0..1) that counts as "closed" for the weld
 
 # ---- robot software modules ----
 [localization]
 method = "ekf_icp"        # EKF (odometry + gyro predict) corrected by scan-to-map ICP
+# -- scan matcher (point-to-line ICP against the map segments) --
+scan_min_range_m = 0.05           # closer returns are the robot's own body
+icp_point_stride = 2              # use every n-th beam
 icp_max_iterations = 20
-icp_max_correspondence_m = 0.15
-process_noise_xy_m = 0.002
+icp_max_correspondence_m = 0.30   # first gate: must exceed the worst expected prior error
+icp_min_correspondence_m = 0.03   # final gate (~6 sigma of range noise); rejects unmapped objects
+icp_gate_sigmas = 3.0             # gate = this many robust std devs of the residuals
+icp_tolerance_m = 1e-5            # stop when the correction step is below these
+icp_tolerance_rad = 1e-5
+icp_min_inliers = 80              # refuse the match with fewer points on the map
+icp_min_inlier_fraction = 0.5     # ... or with a smaller share of the valid returns
+icp_min_direction_fraction = 0.05 # ... or if the weakest direction has a smaller share of the fit
+# -- EKF on [x, y, yaw] --
+use_gyro = true                   # yaw rate from the gyro (else wheel odometry)
+initial_std_xy_m = 0.02           # uncertainty of the known start pose
+initial_std_yaw_rad = 0.02
+process_noise_xy_m = 0.002        # random-walk growth per sqrt(second)
 process_noise_yaw_rad = 0.002
+odometry_error_frac = 0.02        # extra position noise as a fraction of distance travelled
+scan_noise_xy_m = 0.005           # floor added to the ICP covariance (map/calibration error)
+scan_noise_yaw_rad = 0.003
+scan_history_s = 0.20             # estimates kept to line a delayed scan up with its capture time
+gate_chi2 = 16.27                 # innovation gate: chi-square, 3 dof, 99.9 %
+health_timeout_s = 1.0            # unhealthy without an accepted scan match for this long
+health_max_std_xy_m = 0.05
+health_max_std_yaw_rad = 0.05
 
 [navigation]
 grid_resolution_m = 0.05
-inflation_m = 0.45        # robot circumscribed radius + margin
-max_linear_mps = 0.5
-max_angular_radps = 1.0
+inflation_m = 0.45        # robot circumscribed radius (0.40) + margin
+planner_snap_m = 0.30     # start/goal inside the inflated zone snaps to a free cell this near
+# Hard limits enforced on every base command. The customer limits (0.35 m/s, 0.6 rad/s)
+# are applied on top, so raising these above them has no effect.
+max_linear_mps = 0.33
+max_angular_radps = 0.55
 max_linear_accel_mps2 = 0.5
 max_angular_accel_radps2 = 1.5
-lookahead_m = 0.30
-dock_switch_distance_m = 0.40   # hand over from path tracking to fine docking
+# -- path tracker: reference profile stays inside the hard limits, leaving room for feedback --
+cruise_speed_mps = 0.30
+cruise_yaw_rate_radps = 0.50
+profile_accel_mps2 = 0.40
+corner_speed_mps = 0.05           # reference speed through a path corner
+tracker_kp_along = 2.0            # 1/s
+tracker_kp_cross = 2.0            # 1/s
+tracker_kd_cross = 0.0            # derivative gains: 0 for a velocity-controlled base;
+tracker_kp_yaw = 2.0              #   raise if the real base shows lag-induced oscillation
+tracker_kd_yaw = 0.0
+tracker_max_lag_m = 0.15          # reference waits if the base is this far behind
+tracker_goal_tolerance_m = 0.05   # path end counts as reached inside this
+# -- docking --
+dock_switch_distance_m = 0.40   # pre-dock pose: hand over from path tracking to fine docking
 dock_tolerance_m = 0.005
 dock_tolerance_rad = 0.009      # 0.5 deg (customer limit: 25 mm, 2 deg)
 dock_max_linear_mps = 0.08
+dock_max_angular_radps = 0.30
+dock_decel_mps2 = 0.10          # approach speed <= sqrt(2 * decel * distance)
+dock_decel_radps2 = 0.30
+dock_kp = 1.5                   # 1/s
+dock_kp_yaw = 1.5
+dock_ki = 0.0                   # integral off: the velocity-commanded base is an integrator
+dock_ki_yaw = 0.0
+dock_dwell_s = 0.30             # inside tolerance and at rest for this long = docked
 
 [safety]
 slow_distance_m = 1.00    # start scaling speed down
