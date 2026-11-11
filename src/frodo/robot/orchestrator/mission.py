@@ -14,8 +14,8 @@ What the robot believes about kits comes only from the line controller (arrival 
 inspection results, accepted counts) and from perception. ASSEMBLY_DONE is sent when the
 robot has let go of a ring inside the work window; it is a claim, not acceptance.
 
-The safety monitor (`frodo.robot.safety`) is not implemented yet, so commands pass
-through unfiltered. It will sit between the wanted command and the returned one.
+The safety monitor (`frodo.robot.safety`) filters the base command last, from raw lidar
+data. While docking it is told which conveyor the robot is closing in on.
 """
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ from ..manipulation.arm_controller import ArmCommand, ArmController
 from ..navigation.navigator import Navigator, NavStatus
 from ..perception import Perception
 from ..plc import RESULT_ACCEPTED, LineClient, LineError, LineStatus
+from ..safety.monitor import SafetyMonitor
 
 log = get_logger(__name__)
 WORK_EXIT_X = CELL["conveyor"]["work_exit_local_x_m"]
@@ -60,6 +61,7 @@ class Orchestrator:
         self.navigator = Navigator(cfg)
         self.perception = Perception(cfg)
         self.arm = ArmController(kin_model, cfg)
+        self.safety = SafetyMonitor(cfg) if cfg.safety.enabled else None
         self.mode = Mode.IDLE
         self.station: str | None = None           # station being driven to or worked at
         self.station_frame: StationFrame | None = None
@@ -152,8 +154,13 @@ class Orchestrator:
                 self._head_for(self._goal(), t)
         if arm is None:
             arm = self.arm.step(frame.joints, None, t, self.dt)
-        return RobotCommand(base=base, arm_q=arm.arm_q, gripper=arm.gripper,
-                            request_grasp=arm.request_grasp, release_grasp=arm.release_grasp)
+        command = RobotCommand(base=base, arm_q=arm.arm_q, gripper=arm.gripper,
+                               request_grasp=arm.request_grasp, release_grasp=arm.release_grasp)
+        if self.safety is not None:
+            # The conveyor being docked at is expected in the lidar data; nothing else is.
+            mask = StationFrame.from_pose(self.station, pose) if self.mode is Mode.DOCK else None
+            command, _ = self.safety.filter(frame, command, mask)
+        return command
 
     def _set_mode(self, mode: Mode, t: float) -> None:
         if mode is not self.mode:

@@ -147,10 +147,21 @@ dock_ki = 0.0                   # integral off: the velocity-commanded base is a
 dock_ki_yaw = 0.0
 dock_dwell_s = 0.30             # inside tolerance and at rest for this long = docked
 
-[safety]
-slow_distance_m = 1.00    # start scaling speed down
-stop_distance_m = 0.45    # zero motion at or inside this
-human_zone_radius_m = 1.0 # customer rule: person within 1 m of the base footprint
+[safety]                  # distances are measured from the edge of the base footprint
+enabled = true
+footprint_m = 0.57        # side of the square base outline
+slow_distance_m = 1.00    # obstacle ahead closer than this: start scaling the speed down
+stop_distance_m = 0.45    # ... and no motion toward it at or inside this
+corridor_margin_m = 0.10  # the swept corridor is the footprint plus this on each side
+rotation_margin_m = 0.05  # turning stops for anything inside the corner circle plus this
+scan_timeout_s = 0.5      # lidar data older than this counts as an obstacle
+clear_hysteresis_m = 0.05 # after a stop, the obstacle must be this much further away ...
+clear_time_s = 0.5        # ... for this long before the base moves again
+motion_epsilon_mps = 0.002     # commands below these are "not moving" and are not supervised
+motion_epsilon_radps = 0.005
+dock_mask_margin_m = 0.05      # while docking, returns within the conveyor outline + this are expected
+dock_min_clearance_m = 0.15    # ... but the base still stops if the conveyor is closer than this
+human_zone_radius_m = 1.0 # customer rule: person within 1 m of the base footprint (not implemented yet)
 max_stop_latency_s = 0.2
 
 [perception]

@@ -33,7 +33,7 @@ def mission(tmp_path_factory):
 def test_run_is_labelled_as_oracle_perception(mission):
     summary, _ = mission
     assert summary["perception"].startswith("ORACLE")
-    assert "not implemented" in summary["safety_monitor"]
+    assert "rudimentary" in summary["safety_monitor"]
 
 
 def test_five_accepted_at_each_station(mission):

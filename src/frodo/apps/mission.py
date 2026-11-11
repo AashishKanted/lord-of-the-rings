@@ -127,7 +127,8 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
         "perception": ("ORACLE: kit poses are simulator truth, not a sensor-driven perception "
                        "result" if oracle_perception else cfg.perception.method),
         "localization_navigation": "simulated lidar + odometry + IMU (sensor-driven)",
-        "safety_monitor": "not implemented: commands are not safety-filtered",
+        "safety_monitor": ("rudimentary lidar slow/stop on the base; no human-zone latch, arm "
+                           "not supervised" if cfg.safety.enabled else "disabled"),
         "leave_policy": cfg.mission.leave_policy,
         "belt_speed_mps": params.belt_speed_mps,
         "release_phase_s": params.release_phase_s,
