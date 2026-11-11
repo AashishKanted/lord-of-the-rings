@@ -9,12 +9,17 @@ Extended Kalman filter on the state ``[x, y, yaw]`` in the map frame.
   pose against the map; that pose is the measurement (measurement model H = I). A
   chi-square gate on the innovation drops matches that disagree with the prediction
   by more than the combined uncertainty allows.
+- sensor latency: a scan is stamped with its capture time, which is a little before the
+  tick that delivers it. The filter keeps a short history of its own estimates, matches
+  the scan against the estimate it had at the capture time, and applies the resulting
+  correction to the current state (the pose error barely changes over a few ticks).
 
 The room is symmetric, so there is no global relocalisation: the filter starts from
 the known mission start pose and only ever tracks.
 """
 from __future__ import annotations
 
+from collections import deque
 from math import atan2, cos, hypot, sin, sqrt
 
 import numpy as np
@@ -49,6 +54,7 @@ class Localizer:
         self._t: float | None = None           # time of the last frame
         self._t_corrected: float | None = None  # time of the last accepted scan match
         self._twist = Twist2D()
+        self._history: deque[tuple[float, np.ndarray]] = deque()  # recent (t, state)
         self.last_match: ScanMatch | None = None
         self.rejected_in_a_row = 0
 
@@ -87,13 +93,23 @@ class Localizer:
             yaw_rate = frame.imu.gyro_z
         if dt > 0.0:
             self.predict(self._twist, yaw_rate, dt)
-        if frame.lidars:
-            match = self.matcher.match(frame.lidars, self.pose)
+        self._history.append((frame.t, self.state.copy()))
+        while frame.t - self._history[0][0] > self.cfg.scan_history_s:
+            self._history.popleft()
+        # Scans captured at the same instant (both lidars) are matched together.
+        for t_scan in sorted({scan.t for scan in frame.lidars}):
+            scans = [scan for scan in frame.lidars if scan.t == t_scan]
+            then = self._state_at(t_scan)
+            match = self.matcher.match(scans, Pose2D(then[0], then[1], wrap_angle(then[2])))
             if match is None:
                 self.rejected_in_a_row += 1
-            elif self.correct(match):
+            elif self.correct(match, then):
                 self._t_corrected = frame.t
         return self.pose
+
+    def _state_at(self, t: float) -> np.ndarray:
+        """The filter's own estimate at (the stored tick nearest to) time t."""
+        return min(self._history, key=lambda item: abs(item[0] - t))[1].copy()
 
     def predict(self, twist: Twist2D, yaw_rate: float, dt: float) -> None:
         cfg = self.cfg
@@ -110,15 +126,17 @@ class Localizer:
         q_yaw = cfg.process_noise_yaw_rad ** 2 * dt
         self.covariance = jac @ self.covariance @ jac.T + np.diag([q_xy, q_xy, q_yaw])
 
-    def correct(self, match: ScanMatch) -> bool:
-        """Fuse a scan-match pose. Returns False if the gate rejected it."""
+    def correct(self, match: ScanMatch, reference: np.ndarray | None = None) -> bool:
+        """Fuse a scan-match pose. ``reference`` is the estimate the filter had when the scan
+        was captured (default: the current state). Returns False if the gate rejected it."""
         cfg = self.cfg
+        reference = self.state if reference is None else reference
         # The ICP covariance only covers range noise; the floor covers map and
         # calibration errors that do not average out over the points of one scan.
         noise = match.covariance + np.diag([cfg.scan_noise_xy_m ** 2, cfg.scan_noise_xy_m ** 2,
                                             cfg.scan_noise_yaw_rad ** 2])
-        innovation = np.array([match.pose.x - self.state[0], match.pose.y - self.state[1],
-                               wrap_angle(match.pose.yaw - self.state[2])])
+        innovation = np.array([match.pose.x - reference[0], match.pose.y - reference[1],
+                               wrap_angle(match.pose.yaw - reference[2])])
         s_inv = np.linalg.inv(self.covariance + noise)
         distance2 = float(innovation @ s_inv @ innovation)
         if distance2 > cfg.gate_chi2:
@@ -127,7 +145,10 @@ class Localizer:
                         distance2, *innovation)
             return False
         gain = self.covariance @ s_inv
-        self.state += gain @ innovation
+        shift = gain @ innovation
+        self.state += shift
+        for _, past in self._history:      # keep the stored estimates consistent
+            past += shift
         keep = np.eye(3) - gain
         self.covariance = keep @ self.covariance @ keep.T + gain @ noise @ gain.T  # Joseph form
         self.last_match = match

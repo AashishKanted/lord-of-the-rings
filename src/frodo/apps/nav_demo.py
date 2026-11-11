@@ -1,9 +1,12 @@
-"""KINEMATIC TEST HARNESS for localization + navigation. NOT the MuJoCo robot run.
+"""Navigation-only demo: start -> dock A -> dock B with `Localizer` + `Navigator`.
 
-    uv run python -m frodo.apps.nav_demo [--seed 0] [--out results/nav]
+    uv run python -m frodo.apps.nav_demo [--seed 0] [--out results/nav]     # kinematic harness
+    uv run python -m frodo.apps.nav_demo --mujoco                           # MuJoCo cell
 
-Drives start -> dock A -> dock B with the real robot modules (`Localizer`, `Navigator`)
-closed around a pure-numpy stand-in for the simulator:
+Two backends hold the true state and produce the `SensorFrame`s:
+
+DEFAULT = KINEMATIC TEST HARNESS, NOT the MuJoCo robot run. A pure-numpy stand-in for
+the simulator:
 
 - `KinematicCell` integrates the commanded base twist (first-order actuator lag) and
   holds the TRUE pose. It produces a `SensorFrame` with noisy odometry, a biased gyro
@@ -11,9 +14,15 @@ closed around a pure-numpy stand-in for the simulator:
 - The robot modules only ever receive that `SensorFrame`; the true pose is used here
   for scoring and plotting only.
 
-Nothing here involves physics, the arm, the plant or the PLC, and it produces no
-acceptance evidence. It exists so the navigation stack can be developed and tested
-headless, in milliseconds, before it is wired to the MuJoCo sensors.
+It exists so the navigation stack can be developed and tested headless in milliseconds.
+
+``--mujoco`` = the real cell model (`frodo.sim.scene`), sensors from `SensorSuite`
+(cameras off), commands through `ActuatorBridge`, arm held stowed. This is a base-only
+navigation run: no plant, kits, PLC or manipulation.
+
+In both backends the robot modules receive only the `SensorFrame`; the true pose is read
+here for scoring and plotting (DIAGNOSTIC use of ground truth, never passed to
+`frodo.robot`). Neither backend produces acceptance evidence.
 """
 from __future__ import annotations
 
@@ -33,6 +42,7 @@ from ..interfaces import (
     LidarScan,
     OdometrySample,
     Pose2D,
+    RobotCommand,
     SensorFrame,
     Twist2D,
 )
@@ -111,7 +121,10 @@ class KinematicCell:
         self.true_pose = start or Pose2D(*CELL["start_pose_world"])
         self.true_twist = Twist2D()
         self.tick = 0
-        self._lidar_every = max(1, round(1.0 / (self.cfg.sensors.lidar.rate_hz * self.dt)))
+        lidar = self.cfg.sensors.lidar
+        self._lidar_every = max(1, round(1.0 / (lidar.rate_hz * self.dt)))
+        self._lidar_delay = round(lidar.latency_s / self.dt)   # ticks from capture to delivery
+        self._lidar_queue: list[tuple[int, list[LidarScan]]] = []
 
     @property
     def t(self) -> float:
@@ -126,10 +139,12 @@ class KinematicCell:
             k[2] * tw.wz + self.rng.normal(0.0, s.odometry.noise_std_frac * abs(tw.wz))))
         imu = ImuSample(self.t, tw.wz + s.imu.gyro_bias_radps
                         + self.rng.normal(0.0, s.imu.gyro_noise_std_radps), (0.0, 0.0))
+        if self.tick % self._lidar_every == 0:      # scans keep their capture time stamp
+            self._lidar_queue.append((self.tick + self._lidar_delay, lidar_scans(
+                self.true_pose, self.t, self.cfg, self.rng, self.options.extra_segments)))
         lidars = []
-        if self.tick % self._lidar_every == 0:
-            lidars = lidar_scans(self.true_pose, self.t, self.cfg, self.rng,
-                                 self.options.extra_segments)
+        if self._lidar_queue and self._lidar_queue[0][0] <= self.tick:
+            lidars = self._lidar_queue.pop(0)[1]
         return SensorFrame(self.t, JointState(self.t, np.zeros(7), 0.0), odometry, imu, lidars)
 
     def apply(self, command: Twist2D) -> None:
@@ -146,6 +161,70 @@ class KinematicCell:
                                 atan2(sin(p.yaw + tw.wz * self.dt), cos(p.yaw + tw.wz * self.dt)))
         self.true_twist = tw
         self.tick += 1
+
+
+class MujocoCell:
+    """The MuJoCo cell behind the same sense/apply interface as `KinematicCell`.
+
+    Ground truth (`true_pose`, `true_twist`, `contacts`) is for scoring only."""
+
+    def __init__(self, config=None, seed: int = 0):
+        import mujoco
+
+        from ..robot.description import ARM_STOWED, BASE_JOINTS
+        from ..sim.actuation import ActuatorBridge
+        from ..sim.scene import build_spec, reset
+        from ..sim.sensors import SensorSuite
+
+        self._mujoco = mujoco
+        self.cfg = config or get_config()
+        self.dt = self.cfg.sim.control_dt_s
+        self.model = build_spec().compile()
+        self.data = mujoco.MjData(self.model)
+        reset(self.model, self.data)                         # mission start pose, arm stowed
+        self.suite = SensorSuite(self.model, self.cfg, seed=seed, enable_cameras=False)
+        self.bridge = ActuatorBridge(self.model, self.cfg)
+        self._arm_stowed = ARM_STOWED
+        self._substeps = round(self.dt / self.model.opt.timestep)
+        self._base_qpos = [int(self.model.joint(j).qposadr[0]) for j in BASE_JOINTS]
+        self._robot_root = int(self.model.body_rootid[self.model.body("base_link").id])
+        self._floor = self.model.geom("floor").id
+        self.true_twist = Twist2D()
+        self.contacts: set[tuple[str, str]] = set()   # (robot geom, world geom) pairs seen
+
+    @property
+    def t(self) -> float:
+        return float(self.data.time)
+
+    @property
+    def true_pose(self) -> Pose2D:
+        x, y, yaw = self.data.qpos[self._base_qpos]
+        return Pose2D(float(x), float(y), atan2(sin(yaw), cos(yaw)))
+
+    def sense(self) -> SensorFrame:
+        return self.suite.read(self.data)
+
+    def apply(self, command: Twist2D) -> None:
+        before = self.true_pose
+        self.bridge.apply(self.data, RobotCommand(base=command, arm_q=self._arm_stowed))
+        for _ in range(self._substeps):
+            self._mujoco.mj_step(self.model, self.data)
+            self._record_contacts()
+        after = self.true_pose
+        c, s = cos(before.yaw), sin(before.yaw)
+        dx, dy = (after.x - before.x) / self.dt, (after.y - before.y) / self.dt
+        self.true_twist = Twist2D(c * dx + s * dy, -s * dx + c * dy, atan2(
+            sin(after.yaw - before.yaw), cos(after.yaw - before.yaw)) / self.dt)
+
+    def _record_contacts(self) -> None:
+        """Robot-vs-cell contacts (walls, conveyors), read from the simulator's contact list."""
+        m = self.model
+        for g1, g2 in self.data.contact.geom[:self.data.ncon]:
+            roots = [int(m.body_rootid[m.geom_bodyid[g]]) for g in (g1, g2)]
+            if (roots[0] == self._robot_root) != (roots[1] == self._robot_root) \
+                    and self._floor not in (g1, g2):
+                robot, other = (g1, g2) if roots[0] == self._robot_root else (g2, g1)
+                self.contacts.add((m.geom(robot).name, m.geom(other).name))
 
 
 def footprint_clearance(pose: Pose2D, segments: np.ndarray) -> float:
@@ -193,7 +272,7 @@ def pose_error(a: Pose2D, b: Pose2D) -> tuple[float, float]:
     return hypot(a.x - b.x, a.y - b.y), abs(atan2(sin(a.yaw - b.yaw), cos(a.yaw - b.yaw)))
 
 
-def run_leg(sim: KinematicCell, localizer: Localizer, dead_reckoner: Localizer,
+def run_leg(sim: KinematicCell | MujocoCell, localizer: Localizer, dead_reckoner: Localizer,
             navigator: Navigator, station: str, trace: Trace,
             timeout_s: float = 60.0) -> LegResult:
     """Drive to one dock. The navigator is fed the localizer's estimate only."""
@@ -226,10 +305,11 @@ def run_leg(sim: KinematicCell, localizer: Localizer, dead_reckoner: Localizer,
 
 
 def run_mission(seed: int = 0, stations=("A", "B"), options: HarnessOptions | None = None,
-                config=None):
-    """start -> each dock in turn. Returns (leg results, trace)."""
+                config=None, sim: KinematicCell | MujocoCell | None = None):
+    """start -> each dock in turn. Returns (leg results, trace). ``sim`` defaults to the
+    kinematic harness; pass a `MujocoCell` for the MuJoCo backend."""
     cfg = config or get_config()
-    sim = KinematicCell(cfg, seed=seed, options=options)
+    sim = sim or KinematicCell(cfg, seed=seed, options=options)
     localizer, dead_reckoner, navigator = Localizer(cfg), Localizer(cfg), Navigator(cfg)
     trace = Trace()
     return [run_leg(sim, localizer, dead_reckoner, navigator, s, trace) for s in stations], trace
@@ -238,7 +318,8 @@ def run_mission(seed: int = 0, stations=("A", "B"), options: HarnessOptions | No
 # --------------------------------------------------------------------------------------
 # Report
 # --------------------------------------------------------------------------------------
-def draw(trace: Trace, legs: list[LegResult], path: Path, config=None) -> None:
+def draw(trace: Trace, legs: list[LegResult], path: Path, config=None,
+         title: str = "KINEMATIC TEST HARNESS (not the MuJoCo run)") -> None:
     """Top-down PNG: map, inflated zone, planned paths, true and estimated trajectories."""
     from PIL import Image, ImageDraw
 
@@ -271,14 +352,13 @@ def draw(trace: Trace, legs: list[LegResult], path: Path, config=None) -> None:
         d.text(px(x + .12, y + .12), f"dock {name}", fill="black")
     y0 = int(ly * scale) + 2 * margin
     for i, (colour, label) in enumerate((
-            ("#2ca02c", "true base trajectory (harness ground truth)"),
+            ("#2ca02c", "true base trajectory (ground truth, scoring only)"),
             ("#d62728", "EKF estimate (odometry + gyro + lidar scan matching)"),
             ("#ff9900", "odometry + gyro only"), ("#1f77b4", "planned path (A* + shortcut)"))):
         d.line([(margin + 400 * (i % 2), y0 + 12 + 22 * (i // 2)),
                 (margin + 400 * (i % 2) + 30, y0 + 12 + 22 * (i // 2))], fill=colour, width=3)
         d.text((margin + 400 * (i % 2) + 38, y0 + 6 + 22 * (i // 2)), label, fill="black")
-    d.text((margin, 12), "KINEMATIC TEST HARNESS (not the MuJoCo run) - grey: inflated no-go zone",
-           fill="black")
+    d.text((margin, 12), f"{title} - grey: inflated no-go zone", fill="black")
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
 
@@ -315,14 +395,28 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seed", type=int, default=get_config().sim.seed)
     parser.add_argument("--out", type=Path, default=ROOT / "results" / "nav")
+    parser.add_argument("--mujoco", action="store_true",
+                        help="run in the MuJoCo cell (SensorSuite + ActuatorBridge) instead of "
+                             "the kinematic harness")
     parser.add_argument("--odometry-scale", type=float, default=1.0,
-                        help="systematic wheel-odometry scale error to inject, e.g. 1.03")
+                        help="kinematic harness only: systematic wheel-odometry scale error to "
+                             "inject, e.g. 1.03")
     args = parser.parse_args()
 
-    k = args.odometry_scale
-    legs, trace = run_mission(args.seed, options=HarnessOptions(odometry_scale=(k, k, 1.0)))
-    print("KINEMATIC TEST HARNESS - not a MuJoCo robot run, no acceptance evidence")
-    print(f"seed {args.seed}, odometry scale error {k}")
+    wall = time.perf_counter()
+    if args.mujoco:
+        sim = MujocoCell(seed=args.seed)
+        legs, trace = run_mission(args.seed, sim=sim)
+        title, name = "MUJOCO base-only navigation run (no plant / manipulation)", "mujoco"
+        print(f"{title}; true pose used for scoring only")
+        print(f"seed {args.seed}, robot-vs-cell contacts: {sorted(sim.contacts) or 'none'}")
+    else:
+        k = args.odometry_scale
+        legs, trace = run_mission(args.seed, options=HarnessOptions(odometry_scale=(k, k, 1.0)))
+        title, name = "KINEMATIC TEST HARNESS (not the MuJoCo run)", "kinematic"
+        print(f"{title}; no acceptance evidence")
+        print(f"seed {args.seed}, odometry scale error {k}")
+    wall = time.perf_counter() - wall
     tolerance = CELL["robot"]
     for leg in legs:
         ok = (leg.status is NavStatus.DOCKED
@@ -335,8 +429,9 @@ def main() -> None:
               f"{'within' if ok else 'OUTSIDE'} customer 25 mm / 2 deg")
     for key, value in summarize(trace, legs).items():
         print(f"  {key:28s} {value:.3f}" if isinstance(value, float) else f"  {key:28s} {value}")
-    out = args.out / f"nav_demo_seed{args.seed}.png"
-    draw(trace, legs, out)
+    print(f"  simulated {trace.t[-1]:.2f} s in {wall:.2f} s wall")
+    out = args.out / f"nav_demo_{name}_seed{args.seed}.png"
+    draw(trace, legs, out, title=title)
     print(f"wrote {out}")
 
 
