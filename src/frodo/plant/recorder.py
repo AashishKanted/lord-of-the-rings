@@ -36,8 +36,11 @@ class MotionRecorder:
     def due(self, t: float) -> bool:
         return self._last is None or t - self._last[0] >= self.period - 1e-9
 
-    def sample(self, data) -> dict:
+    def sample(self, data) -> dict | None:
+        """Write one sample; None if one was already written at this instant."""
         t, pose, tool = float(data.time), self.pose(data), data.site_xpos[self._site].copy()
+        if self._last is not None and t <= self._last[0]:
+            return None
         base_speed = ee_speed = 0.0
         if self._last is not None and t > self._last[0]:
             dt = t - self._last[0]
