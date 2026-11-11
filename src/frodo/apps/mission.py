@@ -50,7 +50,7 @@ SCENARIOS = ("nominal",)
 
 def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int | None = None,
         config=None, belt_speed_mps: float | None = None, port: int | None = None,
-        time_limit_s: float | None = None) -> dict:
+        time_limit_s: float | None = None, video: str | Path | None = None) -> dict:
     """Run one mission and return its summary (also written to ``summary.json``)."""
     if scenario not in SCENARIOS:
         raise NotImplementedError(f"scenario '{scenario}' is not implemented (have: {SCENARIOS})")
@@ -72,6 +72,7 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
     oracle = OracleKitSource(model) if oracle_perception else None
     steps_per_tick = round(cfg.sim.control_dt_s / model.opt.timestep)
     docks, wall = [], time.perf_counter()
+    recorder_video = _VideoWriter(model, Path(video), cfg) if video else None
 
     with Line(model, cfg, scenario, params=params, events_path=out / "events.jsonl",
               port=cfg.plant.plc_port if port is None else port) as line:
@@ -105,12 +106,16 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
             for _ in range(steps_per_tick):
                 mujoco.mj_step(model, data)
                 line.step(data)
+            if recorder_video is not None:
+                recorder_video.frame(data, robot.mode.value, robot.station)
         mujoco.mj_kinematics(model, data)
         recorder.sample(data)                 # close the log with a final motion sample
         counts, kits = line.counts(), [dict(k) for k in line.kits]
         events = list(line.events.events)
         commands = line.plc.command_ledger()
     sensors.close()
+    if recorder_video is not None:
+        recorder_video.close()
     wall = time.perf_counter() - wall
 
     verdict = check(events, scenario)
@@ -149,6 +154,39 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
     return summary
 
 
+class _VideoWriter:
+    """Renders the overview camera with an inset close-up of the station being worked.
+    Uses simulator state for drawing only; the robot software never sees it."""
+
+    def __init__(self, model, path: Path, cfg, fps: int = 30):
+        import imageio.v2 as imageio
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.path, self.fps, self._n = path, fps, 0
+        self._writer = imageio.get_writer(path, fps=fps, macro_block_size=None)
+        self._main = mujoco.Renderer(model, 720, 960)
+        self._inset = mujoco.Renderer(model, 240, 320)
+
+    def frame(self, data, mode: str, station: str | None) -> None:
+        if data.time * self.fps < self._n:
+            return
+        self._n += 1
+        from PIL import Image, ImageDraw
+        self._main.update_scene(data, camera="overview")
+        image = self._main.render().copy()
+        self._inset.update_scene(data, camera=f"close_{station or 'A'}")
+        image[8:248, 632:952] = self._inset.render()
+        pil = Image.fromarray(image)
+        ImageDraw.Draw(pil).text((12, 10), f"t={data.time:6.1f} s  mode={mode}"
+                                 f"{'  station ' + station if station else ''}", fill="white")
+        self._writer.append_data(__import__("numpy").asarray(pil))
+
+    def close(self) -> None:
+        self._writer.close()
+        self._main.close()
+        self._inset.close()
+        log.info("wrote video %s (%d frames)", self.path, self._n)
+
+
 def _dock_report(station: str, t: float, x: float, y: float, yaw: float) -> dict:
     dock = STATIONS[station].dock
     return {"station": station, "t": round(t, 3),
@@ -167,10 +205,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, help="run directory (default results/<scenario>_seed<N>)")
     parser.add_argument("--port", type=int, help="Modbus/TCP port (default [plant] plc_port; 0 = any)")
     parser.add_argument("--time-limit", type=float)
+    parser.add_argument("--video", type=Path, help="also write an MP4 of the run (slower)")
     args = parser.parse_args()
     setup_logging()
     summary = run(args.scenario, args.out, args.seed, belt_speed_mps=args.belt_speed,
-                  port=args.port, time_limit_s=args.time_limit)
+                  port=args.port, time_limit_s=args.time_limit, video=args.video)
     brief = {k: summary[k] for k in ("scenario", "seed", "perception", "belt_speed_mps",
                                      "robot_finished", "simulated_s", "wall_s", "counts",
                                      "accepted_cycle_s", "docks", "starter_checker")}
