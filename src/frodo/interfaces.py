@@ -58,6 +58,26 @@ class RgbdFrame:
     depth: np.ndarray        # HxW float32, metres along the optical axis
     intrinsics: tuple[float, float, float, float]  # fx, fy, cx, cy
     cam_in_base: np.ndarray  # 4x4 camera pose in the base frame (from robot kinematics)
+    # Conventions: pixel u right / v down; depth 0 = no valid return; `cam_in_base` is the
+    # pose of the optical frame (x right, y down, z forward) at capture time `t`.
+
+    def deproject(self, u, v, depth=None) -> np.ndarray:
+        """Pixel(s) (u, v) -> xyz in the base frame. Depth defaults to the image value at the
+        rounded pixel; results for invalid (zero) depth are meaningless."""
+        fx, fy, cx, cy = self.intrinsics
+        u, v = np.asarray(u, float), np.asarray(v, float)
+        if depth is None:
+            depth = self.depth[np.rint(v).astype(int), np.rint(u).astype(int)]
+        z = np.asarray(depth, float)
+        cam = np.stack([(u - cx) / fx * z, (v - cy) / fy * z, z], axis=-1)
+        return cam @ self.cam_in_base[:3, :3].T + self.cam_in_base[:3, 3]
+
+    def project(self, xyz_base) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Base-frame xyz -> (u, v, depth along the optical axis)."""
+        fx, fy, cx, cy = self.intrinsics
+        cam = (np.asarray(xyz_base, float) - self.cam_in_base[:3, 3]) @ self.cam_in_base[:3, :3]
+        z = cam[..., 2]
+        return cx + fx * cam[..., 0] / z, cy + fy * cam[..., 1] / z, z
 
 
 @dataclass(frozen=True)
