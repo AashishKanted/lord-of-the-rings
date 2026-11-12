@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Launcher for the frodo solution.
-#   scripts/run.sh [-c CONFIG.toml] <view|render|camera|demo|sensors|nav|line|perception|mission> [args...]
+#   scripts/run.sh [-c CONFIG.toml] <view|play|render|camera|demo|sensors|nav|line|perception|mission> [args...]
 # Examples:
 #   scripts/run.sh view --dock A
 #   scripts/run.sh demo --video results/demo/pick_place.mp4
 #   scripts/run.sh sensors                 # lidar plot, camera frames, odometry drift -> results/sensors/
 #   scripts/run.sh mission --seed 0        # full mission -> results/nominal_seed0/
+#   scripts/run.sh play                    # the mission in the viewer, with a box you can move
 #   scripts/run.sh -c config/fast_belt.toml demo
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,7 +19,7 @@ if [[ $# -eq 0 ]]; then
   exec uv run python -m frodo --help
 fi
 # Everything except the interactive viewer renders off-screen.
-if [[ "$1" != "view" ]]; then
+if [[ "$1" != "view" && "$1" != "play" ]]; then
   export MUJOCO_GL="${MUJOCO_GL:-egl}"
 fi
 exec uv run python -m frodo "$@"

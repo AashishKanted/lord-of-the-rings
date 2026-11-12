@@ -9,6 +9,7 @@
     python -m frodo line [--seconds N]      plant-only customer line run
     python -m frodo perception [--frames N] detection bake-off on wrist-camera frames
     python -m frodo mission [--seed N]      full mission: plant + robot, A then B
+    python -m frodo play [--perception P]   the mission in the viewer, with a box you can move
 """
 from __future__ import annotations
 
@@ -34,6 +35,8 @@ def main() -> None:
         from .apps.sensors_demo import main as run
     elif command == "mission":
         from .apps.mission import main as run
+    elif command == "play":
+        from .apps.interactive import main as run
     elif command == "perception":
         from .apps.perception_bakeoff import main as run
     elif command == "nav":

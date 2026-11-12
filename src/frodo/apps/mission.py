@@ -51,8 +51,12 @@ SCENARIOS = ("nominal",)
 def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int | None = None,
         config=None, belt_speed_mps: float | None = None, port: int | None = None,
         time_limit_s: float | None = None, video: str | Path | None = None,
-        perception: str | None = None) -> dict:
-    """Run one mission and return its summary (also written to ``summary.json``)."""
+        perception: str | None = None, add_to_scene=None, on_tick=None) -> dict:
+    """Run one mission and return its summary (also written to ``summary.json``).
+
+    Hooks for interactive use: ``add_to_scene(spec)`` adds bodies before the model is
+    compiled; ``on_tick(model, data, robot)`` runs after every control tick and stops the
+    run by returning False. The robot never sees either."""
     if scenario not in SCENARIOS:
         raise NotImplementedError(f"scenario '{scenario}' is not implemented (have: {SCENARIOS})")
     cfg = config or get_config()
@@ -66,7 +70,10 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
     params = feeder.run_parameters(belt_speed_mps) if belt_speed_mps is not None \
         else feeder.draw_run_parameters(seed, cfg)
 
-    model = build_spec(feeder.pool_layout(cfg)).compile()
+    spec = build_spec(feeder.pool_layout(cfg))
+    if add_to_scene is not None:
+        add_to_scene(spec)
+    model = spec.compile()
     robot_model = build_spec().compile()      # the robot's own kinematic model: no kits
     data = mujoco.MjData(model)
     reset(model, data)                        # mission start pose, arm stowed
@@ -117,6 +124,9 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
                                        or model.body(model.geom_bodyid[other]).name)
             if recorder_video is not None:
                 recorder_video.frame(data, robot.mode.value, robot.station, frame.camera)
+            if on_tick is not None and on_tick(model, data, robot) is False:
+                log.info("t=%.2f run stopped by the caller", data.time)
+                break
         mujoco.mj_kinematics(model, data)
         recorder.sample(data)                 # close the log with a final motion sample
         counts, kits = line.counts(), [dict(k) for k in line.kits]
