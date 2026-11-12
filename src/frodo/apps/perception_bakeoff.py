@@ -58,7 +58,7 @@ def _score(fits, visible, everything) -> tuple[list[float], int, int]:
 
 
 def run(frames: int = 200, segmenters=("depth_bands",), seed: int = 0, station: str = "A",
-        out_dir: Path | None = None) -> dict:
+        out_dir: Path | None = None, video: bool = False, fps: int = 5) -> dict:
     cfg = get_config()
     out = Path(out_dir or ROOT / "results" / "perception_bakeoff")
     out.mkdir(parents=True, exist_ok=True)
@@ -73,6 +73,11 @@ def run(frames: int = 200, segmenters=("depth_bands",), seed: int = 0, station: 
     detectors = {name: RgbdDetector(cfg, make_segmenter(cfg, name)) for name in segmenters}
     stats = {name: {"ring": [], "bottle": [], "ring_missed": 0, "bottle_missed": 0,
                     "false_fits": 0, "kits": 0, "seconds": []} for name in segmenters}
+    writers = {}
+    if video:
+        import imageio.v2 as imageio
+        writers = {name: imageio.get_writer(out / f"detections_{name}.mp4", fps=fps,
+                                            macro_block_size=None) for name in segmenters}
     rng, truth_count = np.random.default_rng(seed), {"ring": 0, "bottle": 0, "kits": 0}
 
     for index in range(frames):
@@ -109,9 +114,16 @@ def run(frames: int = 200, segmenters=("depth_bands",), seed: int = 0, station: 
                 s[f"{kind}_missed"] += missed
                 s["false_fits"] += false
             s["kits"] += len(report.kits)
-            if index == 0:
-                _overlay(image, detector, report, out / f"example_{name}.png")
+            if video or index == 0:
+                picture = _overlay(image, detector, report, all_rings + all_bottles,
+                                   _caption(index, name, report, all_rings, all_bottles))
+                if index == 0:
+                    picture.save(out / f"example_{name}.png")
+                if video:
+                    writers[name].append_data(np.asarray(picture))
     suite.close()
+    for writer in writers.values():
+        writer.close()
 
     summary = {"what": "still-frame detection at the waiting pose; truth used for scoring only",
                "frames": frames, "seed": seed, "camera": "wrist (top-down)",
@@ -131,21 +143,42 @@ def run(frames: int = 200, segmenters=("depth_bands",), seed: int = 0, station: 
     return summary
 
 
-def _overlay(image, detector, report, path: Path) -> None:
-    """Colour image with every proposed mask outlined and accepted fits marked."""
+def _overlay(image, detector, report, truths, title: str):
+    """Colour image with proposed regions outlined (yellow), accepted fits drawn as their
+    spec circles (ring green, neck top red) and true centres as white crosses."""
     from PIL import Image, ImageDraw
 
-    from ..robot.perception.geometry import rim
+    from ..robot.perception.geometry import NECK_RADIUS, RING_RADII, rim
     rgb = image.rgb.copy()
     for mask in detector.segmenter.masks(image):
         rgb[rim(mask)] = (255, 255, 0)
     picture = Image.fromarray(rgb)
     draw = ImageDraw.Draw(picture)
-    for fits, colour in ((report.rings, "lime"), (report.bottles, "red")):
+    angles = np.linspace(0, 2 * np.pi, 73)
+    circle = np.column_stack([np.cos(angles), np.sin(angles), np.zeros_like(angles)])
+    for fits, radii, colour in ((report.rings, RING_RADII, (0, 255, 0)),
+                                (report.bottles, (NECK_RADIUS,), (255, 40, 40))):
         for fit in fits:
-            u, v, _ = image.project(fit.center)
-            draw.ellipse([u - 4, v - 4, u + 4, v + 4], outline=colour, width=2)
-    picture.save(path)
+            for radius in radii:
+                u, v, _ = image.project(fit.center + radius * circle)
+                draw.line(list(zip(u.tolist(), v.tolist(), strict=True)), fill=colour, width=2)
+    for truth in truths:
+        u, v, _ = image.project(truth)
+        draw.line([u - 5, v, u + 5, v], fill="white")
+        draw.line([u, v - 5, u, v + 5], fill="white")
+    draw.rectangle([0, 0, image.rgb.shape[1], 30], fill=(0, 0, 0))
+    draw.text((6, 4), title, fill="white")
+    return picture
+
+
+def _caption(index, name, report, rings, bottles) -> str:
+    def worst(fits, truths):
+        d = [min(np.linalg.norm(f.center[:2] - t[:2]) for t in truths) for f in fits] if truths else []
+        return f"{1e3 * max(d):.2f} mm" if d else "-"
+    return (f"frame {index}  {name}  rings {len(report.rings)} (err {worst(report.rings, rings)})  "
+            f"neck tops {len(report.bottles)} (err {worst(report.bottles, bottles)})  "
+            f"kits {len(report.kits)}  rejected regions {len(report.rejected)}\n"
+            "yellow: proposed regions   green/red: accepted ring / neck-top fit   white +: truth")
 
 
 def main() -> None:
@@ -154,9 +187,12 @@ def main() -> None:
     parser.add_argument("--segmenters", nargs="+", default=["depth_bands"])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--video", action="store_true",
+                        help="write detections_<segmenter>.mp4 with every frame's result drawn")
     args = parser.parse_args()
     setup_logging()
-    print(json.dumps(run(args.frames, tuple(args.segmenters), args.seed, out_dir=args.out), indent=2))
+    print(json.dumps(run(args.frames, tuple(args.segmenters), args.seed, out_dir=args.out,
+                         video=args.video), indent=2))
 
 
 if __name__ == "__main__":

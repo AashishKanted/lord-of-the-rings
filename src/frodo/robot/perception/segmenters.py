@@ -68,7 +68,11 @@ class FastSamSegmenter:
         if result.masks is None:
             return []
         masks = result.masks.data.cpu().numpy().astype(bool)
-        return [m for m in masks if m.sum() >= self.cfg.min_mask_pixels]
+        # The mask is only a region of interest: grow it a little so the object's true edge
+        # is inside it, and let the depth clean-up in `geometry` find that edge.
+        grow = self.cfg.mask_dilate_px
+        return [ndimage.binary_dilation(m, iterations=grow) if grow else m
+                for m in masks if m.sum() >= self.cfg.min_mask_pixels]
 
 
 def make_segmenter(config, name: str | None = None) -> Segmenter:
