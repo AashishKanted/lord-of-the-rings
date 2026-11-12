@@ -25,8 +25,11 @@ range_noise_std_m = 0.005
 rays = 540                # per lidar, over fov_deg
 fov_deg = 270.0
 mounts = [                # x, y in base frame (m), yaw (deg) of the sensor's forward axis
-  { name = "front_left", x = 0.26, y = 0.26, yaw_deg = 45.0 },
-  { name = "rear_right", x = -0.26, y = -0.26, yaw_deg = -135.0 },
+  # just outside the base's side panels (at 0.208 m in x and 0.230 m in y) on a corner bracket,
+  # as close as the body allows:
+  # so the 270 deg fan looks along both sides without hitting the body
+  { name = "front_left", x = 0.235, y = 0.250, yaw_deg = 45.0 },
+  { name = "rear_right", x = -0.235, y = -0.250, yaw_deg = -135.0 },
 ]
 
 [sensors.odometry]
@@ -67,6 +70,8 @@ depth_range_m = [0.10, 5.0]   # outside this the depth pixel is 0 (no return)
 [sensors.cameras.wrist]   # on the arm's last link, next to the gripper
 pitch_back_deg = 35.0     # equals [manipulation] tilt_deg: looks straight down at the working posture
 fovy_deg = 60.0
+bracket_forward_m = 0.07  # bracket: camera this far out in front of the gripper (away from the robot)
+bracket_up_m = 0.0        # ... and this far above the stock camera position
 
 [sensors.cameras.mast]    # fixed post on the base, looking down at the work window
 pos_m = [0.20, -0.20, 1.50]   # camera centre in the base frame; the post stands under it
@@ -194,6 +199,7 @@ fastsam_weights = "models/FastSAM-s.pt"   # downloaded on first use; models/ is 
 fastsam_device = "cuda"   # "cpu" also works, slower
 fastsam_imgsz = 640
 fastsam_conf = 0.3
+mask_dilate_px = 3        # grow a model's mask by this before the depth clean-up (it is only a region of interest)
 ring_hsv_low = [95, 120, 60]
 ring_hsv_high = [115, 255, 255]
 

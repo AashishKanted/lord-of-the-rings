@@ -173,6 +173,10 @@ def _add_robot_sensors(spec):
                       quat=_yaw_quat(radians(mount.yaw_deg)))
         base.add_geom(name=f"lidar_{mount.name}_puck", type=CYL, pos=pos, size=[.03, .02, 0],
                       rgba=[.9, .45, .05, 1], **decoration)
+        # corner bracket from the base body out to the puck
+        base.add_geom(name=f"lidar_{mount.name}_bracket", type=BOX, rgba=[.2, .2, .22, 1],
+                      pos=[0.88 * mount.x, 0.88 * mount.y, lidar.height_m - 0.025],
+                      size=[.04, .04, .005], **decoration)
     # Wrist camera: the Menagerie model points it along the tool axis. The gripper works
     # pitched by [manipulation] tilt_deg, so the camera is pitched back by `pitch_back_deg`
     # (about its own x axis) to look straight down at the belt from the working posture.
@@ -182,7 +186,16 @@ def _add_robot_sensors(spec):
     mujoco.mju_axisAngle2Quat(back, [1.0, 0.0, 0.0], -radians(wrist.pitch_back_deg))
     quat = np.zeros(4)
     mujoco.mju_mulQuat(quat, np.array(camera.quat, dtype=float), back)
+    # A bracket carries it out in front of the gripper (along the image's up direction, away
+    # from the robot), so that it looks down past the fingers instead of onto the gripper.
+    rot = np.zeros(9)
+    mujoco.mju_quat2Mat(rot, quat)
+    forward, back = rot.reshape(3, 3)[:, 1], rot.reshape(3, 3)[:, 2]
+    camera.pos = np.array(camera.pos) + wrist.bracket_forward_m * forward + wrist.bracket_up_m * back
     camera.quat, camera.fovy = quat, wrist.fovy_deg
+    spec.body("bracelet_link").add_geom(name="wrist_camera_body", type=BOX, pos=camera.pos,
+                                        quat=quat, size=[.035, .012, .012], rgba=[.1, .1, .1, 1],
+                                        contype=0, conaffinity=0, group=VISUAL_GROUP, mass=0)
     mast = sensors.cameras.mast
     x, y, z = mast.pos_m
     # The post is a real obstacle for the arm, so it collides like the rest of the robot.
@@ -224,6 +237,9 @@ def build_spec(kits: dict[str, list[float]] | None = None) -> mujoco.MjSpec:
     arm_base.pos[2] += ARM_RISER_M
     _add_robot_sensors(spec)
     spec.visual.global_.offwidth, spec.visual.global_.offheight = 1280, 960
+    # Near clip plane as a fraction of the scene extent (~12.6 m): about 15 mm. The MuJoCo
+    # default (~126 mm here) silently removes the gripper from the wrist camera's image.
+    spec.visual.map.znear = 0.0012
     for station, xs in (kits or {}).items():
         for i, x in enumerate(xs):
             add_kit(spec, STATIONS[station], f"kit_{station}{i}", x)
