@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Launcher for the frodo solution.
-#   scripts/run.sh [-c CONFIG.toml] <view|render|camera|demo|sensors|nav|line|mission> [args...]
+#   scripts/run.sh [-c CONFIG.toml] <view|render|camera|demo|sensors|nav|line|perception|mission> [args...]
 # Examples:
 #   scripts/run.sh view --dock A
 #   scripts/run.sh demo --video results/demo/pick_place.mp4

@@ -7,3 +7,4 @@ results/
 submission/checkpoints/
 .env
 MUJOCO_LOG.TXT
+models/

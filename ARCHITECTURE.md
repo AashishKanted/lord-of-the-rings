@@ -44,7 +44,7 @@ runs in one process and one deterministic loop, with the plant's PLC server on a
 | `frodo/robot/localization/` | EKF + scan-to-map ICP | done |
 | `frodo/robot/navigation/` | A* planner, path tracker, docking, `Navigator` | done (no obstacle reaction) |
 | `frodo/robot/frames.py` | station geometry in the robot base frame | done |
-| `frodo/robot/perception/` | detector backends, belt-encoder tracker, `Perception` facade | scaffold: ORACLE backend only |
+| `frodo/robot/perception/` | detector backends (`oracle`, `rgbd`), segmenters, circle fits from depth, belt-encoder tracker, `Perception` facade | `rgbd` detector works on still frames; the mission still runs on ORACLE |
 | `frodo/robot/manipulation/` | IK, motion profiles, `ArmController` (stow, pick-and-place cycle) | done |
 | `frodo/robot/plc.py` | Modbus line client with sequence/retry rule | done |
 | `frodo/robot/orchestrator/` | mission mode machine | done (nominal only) |
@@ -95,6 +95,23 @@ each kit forward with the conveyor encoder between detections. Consumers get
 `KitObservation`s (ring centre, bottle base, belt velocity, age) in the robot base frame.
 A new detector implements `Detector.detect(frame, station) -> list[KitDetection]`; nothing
 downstream changes.
+
+The `rgbd` detector uses the wrist camera, pitched back so that it looks straight down
+from the arm's waiting pose (about 0.41 m above the kits):
+
+```
+segmenter.masks(image)     proposals: "depth_bands" (height above the kit, no model)
+                           or "fastsam" (class-agnostic network on the colour image)
+geometry.top_surface       depth clean-up: keep each mask's upper surface only
+geometry.fit_ring/bottle   centre from the rim points and the spec radii (48/80 mm ring,
+                           32 mm neck top); checks: fit residual, circumference seen,
+                           height above the kit, whole region inside the spec outline
+rgbd_detector              a kit = a bottle plus the ring one ring-offset downstream
+```
+
+Colour is not used to decide what an object is. `scripts/run.sh perception` runs both
+segmenters on the same frames and scores them against simulator truth
+(`results/perception_bakeoff/summary.json`). It is not wired into the mission yet.
 
 ## Arm controller
 
