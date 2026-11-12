@@ -18,12 +18,17 @@ systems-timing = "advaitic_systems.timing:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.12"]
-perception = [
-    "ultralytics>=8.4.211",
-]
 physics = ["mujoco==3.8.1", "numpy>=1.26,<3"]
 # Candidate solution dependencies (not part of the starter).
-solution = ["mink>=1.2", "pillow>=10", "imageio[ffmpeg]>=2.34"]
+solution = ["mink>=1.2", "scipy>=1.11", "pillow>=10", "imageio[ffmpeg]>=2.34"]
+# Optional: learned segmenter for the perception bake-off (torch, ~2 GB). Not needed to run
+# the mission; install with `uv sync --group perception`.
+perception = ["ultralytics>=8.4.211"]
+
+[tool.uv]
+# Installed by every plain `uv sync` / `uv run`, including the starter's documented
+# `uv sync --locked --group dev --group physics`, so a clean checkout runs the solution.
+default-groups = ["dev", "physics", "solution"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/advaitic_systems", "src/frodo"]

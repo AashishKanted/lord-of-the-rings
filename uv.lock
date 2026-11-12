@@ -41,6 +41,8 @@ solution = [
     { name = "imageio", extra = ["ffmpeg"] },
     { name = "mink" },
     { name = "pillow" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
 [package.metadata]
@@ -59,6 +61,7 @@ solution = [
     { name = "imageio", extras = ["ffmpeg"], specifier = ">=2.34" },
     { name = "mink", specifier = ">=1.2" },
     { name = "pillow", specifier = ">=10" },
+    { name = "scipy", specifier = ">=1.11" },
 ]
 
 [[package]]
