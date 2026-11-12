@@ -173,6 +173,16 @@ def _add_robot_sensors(spec):
                       quat=_yaw_quat(radians(mount.yaw_deg)))
         base.add_geom(name=f"lidar_{mount.name}_puck", type=CYL, pos=pos, size=[.03, .02, 0],
                       rgba=[.9, .45, .05, 1], **decoration)
+    # Wrist camera: the Menagerie model points it along the tool axis. The gripper works
+    # pitched by [manipulation] tilt_deg, so the camera is pitched back by `pitch_back_deg`
+    # (about its own x axis) to look straight down at the belt from the working posture.
+    wrist = sensors.cameras.wrist
+    camera = spec.camera("wrist")
+    back = np.zeros(4)
+    mujoco.mju_axisAngle2Quat(back, [1.0, 0.0, 0.0], -radians(wrist.pitch_back_deg))
+    quat = np.zeros(4)
+    mujoco.mju_mulQuat(quat, np.array(camera.quat, dtype=float), back)
+    camera.quat, camera.fovy = quat, wrist.fovy_deg
     mast = sensors.cameras.mast
     x, y, z = mast.pos_m
     # The post is a real obstacle for the arm, so it collides like the rest of the robot.

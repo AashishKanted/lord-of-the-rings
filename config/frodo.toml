@@ -56,13 +56,17 @@ resolution_m = 0.0001     # encoder count size
 # they can be compared; only `perception_source` is rendered each sample and fed to the
 # perception pipeline. Other enabled cameras render only on request (demos, debugging).
 enabled = ["wrist", "mast"]
-perception_source = "mast"
+perception_source = "wrist"
 width = 640
 height = 480
 rate_hz = 15.0
 latency_s = 0.03
 depth_noise_std_m = 0.001 # at 1 m; grows with the square of depth
 depth_range_m = [0.10, 5.0]   # outside this the depth pixel is 0 (no return)
+
+[sensors.cameras.wrist]   # on the arm's last link, next to the gripper
+pitch_back_deg = 35.0     # equals [manipulation] tilt_deg: looks straight down at the working posture
+fovy_deg = 60.0
 
 [sensors.cameras.mast]    # fixed post on the base, looking down at the work window
 pos_m = [0.20, -0.20, 1.50]   # camera centre in the base frame; the post stands under it
@@ -166,7 +170,7 @@ max_stop_latency_s = 0.2
 
 [perception]
 # "oracle"    = true kit poses from the simulator (ORACLE: for developing the control stack)
-# "classical" = colour + depth segmentation, circle fit (not implemented yet)
+# "rgbd"      = segment the camera image, fit ring and bottle from the depth inside the masks
 method = "oracle"
 oracle_rate_hz = 30.0     # the oracle reports at a camera-like rate
 oracle_noise_std_m = 0.0  # Gaussian position noise added to oracle poses
@@ -174,6 +178,22 @@ view_half_length_m = 0.75 # kits farther than this from the conveyor centre are 
 match_radius_m = 0.10     # detection-to-track association gate (kits are 450 mm apart)
 track_timeout_s = 2.0     # drop a track not detected for this long
 history_s = 0.5           # belt-travel history kept to line up delayed detections
+# -- RGB-D detector (method = "rgbd"): segment -> circle fits from depth -> verify -> pair --
+segmenter = "depth_bands" # "depth_bands" (no model) | "fastsam" (needs dependency group "perception")
+band_tolerance_m = 0.004  # depth_bands: pixels within this of the ring-top / neck-top height
+min_mask_pixels = 150     # smaller regions are ignored
+surface_band_m = 0.004    # depth clean-up: keep a mask's pixels within this of its upper surface
+rim_inlier_m = 0.0015     # rim points this close to a spec circle count as on it (others: occlusion edges)
+min_rim_points = 40       # checks on every circle fit: enough rim points on the circle(s),
+max_fit_rms_m = 0.0010    #   lying this close to them,
+min_coverage = 0.6        #   covering this share of the circumference,
+max_height_error_m = 0.01 #   at the spec height above the kit
+min_shape_fraction = 0.97 #   and this share of the whole region must lie inside the spec outline
+pair_tolerance_m = 0.015  # ring must be this close to where its bottle says it should be
+fastsam_weights = "models/FastSAM-s.pt"   # downloaded on first use; models/ is not committed
+fastsam_device = "cuda"   # "cpu" also works, slower
+fastsam_imgsz = 640
+fastsam_conf = 0.3
 ring_hsv_low = [95, 120, 60]
 ring_hsv_high = [115, 255, 255]
 
