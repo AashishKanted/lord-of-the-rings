@@ -48,12 +48,12 @@ runs in one process and one deterministic loop, with the plant's PLC server on a
 | `frodo/robot/manipulation/` | IK, motion profiles, `ArmController` (stow, pick-and-place cycle) | done |
 | `frodo/robot/plc.py` | Modbus line client with sequence/retry rule | done |
 | `frodo/robot/orchestrator/` | mission mode machine | done (nominal only) |
-| `frodo/robot/safety/` | independent slow/stop supervisor | placeholder |
+| `frodo/robot/safety/` | lidar slow/stop supervisor for the base, with a docking mask | rudimentary: no human-zone latch, arm not supervised |
 | `frodo/apps/mission.py` | full mission runner | done (nominal scenario) |
 | `frodo/apps/pick_place_demo.py`, `nav_demo.py`, `line_demo.py`, `sensors_demo.py` | single-subsystem demos | done |
 
-Not built yet: safety monitor, sensor-driven perception, human-stop and PLC-retry
-scenarios.
+Not built yet: sensor-driven perception, the human-zone stop (latched, base and arm),
+human-stop and PLC-retry scenarios.
 
 ## Control tick
 
@@ -65,7 +65,7 @@ command = orchestrator.step(frame)
     NAVIGATE / DOCK : navigator.step(pose)            arm stowed
     MANIPULATE      : perception.update(frame) -> arm.step(joints, tracked kit)
     STOW            : arm folds, then the next station is chosen
-    (safety.filter will wrap the result; not implemented yet)
+    safety.filter(frame, command, dock mask)          last: can only reduce the base command
 bridge.apply(data, command); step physics; plant.line.step(data) every physics step
 ```
 
@@ -104,6 +104,25 @@ acceleration-limited setpoint moves toward it, the belt velocity is added as a s
 and differential IK produces joint targets. Before release the observed ring-over-neck
 error is integrated out. Stow and unstow are joint-space moves through the home posture.
 The waiting pose is above bottle height so that bottles pass under the gripper.
+
+The ring is pinched across its outer diameter (`manipulation.grasp = "outer"`), so both
+fingers stay outside the bottle and the ring is lowered to 2 mm above its seat before
+release. The older wall pinch (`"wall"`) is kept for comparison; it has to drop the ring
+from above the neck.
+
+The arm is not collision-aware: the IK knows joint limits only. Two guards exist: tool
+targets are clamped to a workspace box over the belt, and a cycle is aborted when the
+measured tool stays more than 30 mm from its commanded position (blocked arm).
+
+## Safety monitor
+
+`SafetyMonitor.filter` runs last in the tick on raw lidar returns (not on the localization
+output). Returns in the corridor the footprint is about to sweep scale the base speed
+from `slow_distance_m` down to zero at `stop_distance_m`; anything inside the corner
+circle stops a turn; stale lidar data stops the base; a stop is held until the obstacle
+has clearly gone. In `DOCK` mode the orchestrator passes the target conveyor: returns
+from inside its outline are exempt from the slow/stop distances but still enforce
+`dock_min_clearance_m`.
 
 ## How modules talk (no message bus)
 
