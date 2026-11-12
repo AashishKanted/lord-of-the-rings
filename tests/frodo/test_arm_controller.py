@@ -63,3 +63,37 @@ def test_unstow_then_stow_runs_through_the_phases(controller):
     assert arm.stowed and q == pytest.approx(ARM_STOWED)
     with pytest.raises(RuntimeError):
         arm.begin(1, t)
+
+
+def test_tool_target_is_kept_inside_the_workspace_box(controller):
+    arm, m = controller, CFG.manipulation
+    inside = arm.hover.copy()
+    assert arm._limit(inside) == pytest.approx(inside)
+    into_the_belt = arm._limit(inside - [0, 0, 0.5])
+    assert into_the_belt[2] == pytest.approx(KIT_TOP_Z - m.workspace_below_kit_top_m)
+    assert into_the_belt[:2] == pytest.approx(inside[:2])
+    far_side = arm._limit(inside + [0.6, 0, 0])                 # beyond the belt, away from the robot
+    assert arm.station.center[0] - far_side[0] == pytest.approx(m.workspace_local_y_m[0])
+    downstream = arm._limit(inside + [0, 2.0, 0])
+    assert arm.station.local_x(downstream) == pytest.approx(m.workspace_local_x_m[1])
+
+
+def test_blocked_tool_aborts_the_cycle(controller):
+    from frodo.robot.perception import KitObservation
+    arm = controller
+    arm.unstow()
+    t, q = 0.0, ARM_STOWED
+    while not arm.waiting:
+        q = arm.step(JointState(t, q, 0.0), None, t, DT).arm_q
+        t += DT
+    bottle = arm.station.point(-0.30, 0.045, KIT_TOP_Z)
+    obs = KitObservation(t, 1, bottle + [0, 0.14, 0.004], bottle, np.zeros(3), 0.0, "test")
+    arm.begin(1, t)
+    stuck = q.copy()                      # the joints never follow: something holds the arm
+    for _ in range(200):
+        arm.step(JointState(t, stuck, 0.0), obs, t, DT)
+        t += DT
+        if arm.phase is ArmPhase.RETURN:
+            break
+    assert arm.phase is ArmPhase.RETURN and "blocked" in arm.cycle.failure
+    assert arm.cycle.grasped_t is None

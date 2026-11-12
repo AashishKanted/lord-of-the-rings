@@ -105,6 +105,7 @@ class ArmController:
         self._reference = "base"        # what `_origin` rides on: "base", "ring" or "bottle"
         self._phase_t0 = 0.0
         self._last_gripper = 0.0
+        self._blocked_s, self._limit_warned = 0.0, False
         if self.m.grasp not in self.m.grasps:
             raise ValueError(f"manipulation.grasp '{self.m.grasp}' is not one of "
                              f"{sorted(self.m.grasps)}")
@@ -171,7 +172,7 @@ class ArmController:
             raise RuntimeError(f"cannot begin a cycle from {self.phase}")
         self.cycle = CycleResult(track_id, t)
         self._grasp_offset, self._trim, self._centred_s = np.zeros(3), np.zeros(3), 0.0
-        self._gripped_ticks = 0
+        self._gripped_ticks, self._blocked_s, self._limit_warned = 0, 0.0, False
         self._enter(ArmPhase.PREGRASP, t)
 
     # ---- per-tick ----
@@ -193,6 +194,13 @@ class ArmController:
             return self._track(rel, dt, self._open)
         if obs is None:
             return self._abort(t, dt, "kit track lost")
+        # Blocked-tool watchdog: the arm is position controlled, so a tool that stays away
+        # from where it was commanded is pushing on something.
+        error = float(np.linalg.norm(self.fk.tcp(joints.arm_q) - self.ik.tcp()))
+        self._blocked_s = self._blocked_s + dt if error > self.m.max_tool_error_m else 0.0
+        if self._blocked_s > self.m.tool_error_time_s:
+            return self._abort(t, dt, f"tool {1e3 * error:.0f} mm from its commanded position "
+                                      "(blocked?)")
         return self._cycle(joints, obs, t, dt, gripper_rate)
 
     # ---- joint-space moves ----
@@ -292,7 +300,7 @@ class ArmController:
             command.release_grasp = True
         rel = self._slew.step(goal, dt) if self.phase is not ArmPhase.RETURN else self._slew.p
         lead = obs.belt_velocity * m.belt_lead_s
-        command.arm_q = self._q_cmd = self.ik.step(self._origin + rel + lead, dt)
+        command.arm_q = self._q_cmd = self.ik.step(self._limit(self._origin + rel + lead, t), dt)
         return command
 
     def _abort(self, t: float, dt: float, reason: str) -> ArmCommand:
@@ -313,8 +321,25 @@ class ArmController:
 
     # ---- helpers ----
     def _track(self, target, dt: float, gripper: float) -> ArmCommand:
-        self._q_cmd = self.ik.step(self._origin + target, dt)
+        self._q_cmd = self.ik.step(self._limit(self._origin + target), dt)
         return ArmCommand(self._q_cmd, gripper)
+
+    def _limit(self, target, t: float | None = None) -> np.ndarray:
+        """Keep the tool target inside the station workspace box (virtual walls): never below
+        the kits, never beyond the belt or past the reachable stretch of it."""
+        st, m = self.station, self.m
+        rel = np.asarray(target, float) - st.center
+        along = float(np.clip(rel[:2] @ st.belt_dir[:2], *m.workspace_local_x_m))
+        across = float(np.clip(rel[:2] @ st.lateral[:2], *m.workspace_local_y_m))
+        z = float(np.clip(target[2], KIT_TOP_Z - m.workspace_below_kit_top_m, m.workspace_top_z_m))
+        limited = st.center + along * st.belt_dir + across * st.lateral
+        limited[2] = z
+        if np.linalg.norm(limited - target) > 1e-6 and not self._limit_warned:
+            log.warning("%sarm target %s is outside the workspace box; limited to %s",
+                        "" if t is None else f"t={t:.2f} ", np.round(target, 3),
+                        np.round(limited, 3))
+            self._limit_warned = True
+        return limited
 
     def _at(self, goal) -> bool:
         return bool(np.linalg.norm(self._slew.p - goal) < REACHED_M)
