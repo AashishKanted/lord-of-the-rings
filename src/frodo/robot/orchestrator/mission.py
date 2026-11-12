@@ -59,7 +59,7 @@ class Orchestrator:
         self.line = line
         self.localizer = Localizer(cfg)
         self.navigator = Navigator(cfg)
-        self.perception = Perception(cfg)
+        self.perception = Perception(cfg, kin_model=kin_model)
         self.arm = ArmController(kin_model, cfg)
         self.safety = SafetyMonitor(cfg) if cfg.safety.enabled else None
         self.mode = Mode.IDLE

@@ -94,3 +94,18 @@ def test_half_hidden_ring_is_rejected_not_misplaced(cell):
     hidden[:, :int(u) + 5] = False                 # something covers a bit more than half
     fit = fit_ring(image, hidden, CFG.perception)
     assert rim(hidden).sum() > CFG.perception.min_rim_points and not fit.valid
+
+
+def test_robot_computes_the_camera_pose_from_its_own_joint_measurements(cell, empty_model):
+    """The robot does not need the simulator's camera pose: forward kinematics of the
+    measured joints gives the same pose."""
+    from frodo.robot.perception.camera_pose import CameraPose
+    station, look = cell
+    image, _ = look(-0.05)
+    pose = CameraPose(empty_model, "wrist")
+    arm = ArmController(empty_model, CFG)
+    arm.set_station(station)
+    pose.record(JointState(image.t, arm.q_ready, 0.0))
+    fk = pose.at(image.t)
+    assert fk[:3, 3] == pytest.approx(image.cam_in_base[:3, 3], abs=1e-4)
+    assert fk[:3, :3] == pytest.approx(image.cam_in_base[:3, :3], abs=1e-4)
