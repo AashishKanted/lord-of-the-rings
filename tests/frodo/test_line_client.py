@@ -81,3 +81,27 @@ def test_client_picks_up_the_controllers_sequence_on_first_use(server):
     late = client_for(server)              # e.g. robot software restarted
     late.ready(2)
     assert late.sequence == 2 and late.poll().stations[2].ready
+
+
+def test_command_unacknowledged_after_all_attempts_is_settled_before_the_next(server):
+    line = client_for(server)
+    line.ready(1)
+    with server.lock:
+        server.model.arrive(1, 5)
+    real = line._client.command
+
+    def applied_but_never_acknowledged(sequence, station, kit_id, command):
+        real(sequence, station, kit_id, command)
+        raise ConnectionResetError("ack dropped")
+
+    line._client.command = applied_but_never_acknowledged
+    with pytest.raises(LineError):
+        line.assembly_done(1, 5)                 # applied once, the robot cannot know
+    assert line.sequence == 1 and line._pending == (2, 1, 5, ASSEMBLY_DONE)
+    line._client.command = real
+    line.ready(1, False)                         # resends seq 2 unchanged, then seq 3
+    assert [c["sequence"] for c in line.ledger] == [1, 2, 3]
+    with server.lock:
+        assert [c["sequence"] for c in server.model.commands] == [1, 2, 3]   # each applied once
+    frames = line.ledger[1]["frames_hex"]
+    assert len(frames) == 1 and len(frames[0]) == 42     # one complete FC16 request frame
