@@ -117,10 +117,8 @@ def test_oracle_backend_without_ground_truth_reports_nothing():
     assert perception.update(frame_with(0.0, None, signal(0.0, 0.0))) == []
 
 
-def test_classical_backend_is_a_labelled_placeholder():
-    detector = make_detector(with_overrides(CFG, {"perception": {"method": "classical"}}))
-    assert detector.name == "classical"
-    with pytest.raises(NotImplementedError):
-        detector.detect(frame_with(0.0, None), StationFrame.from_pose("A", dock("A")))
+def test_detector_backends_are_selected_by_config():
+    assert make_detector(with_overrides(CFG, {"perception": {"method": "rgbd"}})).name == \
+        "rgbd/depth_bands"
     with pytest.raises(ValueError):
         make_detector(with_overrides(CFG, {"perception": {"method": "magic"}}))
