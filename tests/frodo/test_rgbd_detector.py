@@ -70,11 +70,17 @@ def test_no_camera_frame_means_no_new_detection(cell):
     assert RgbdDetector(CFG).detect(frame, station) is None
 
 
-def test_bottle_without_its_ring_is_not_a_kit(cell):
+def test_bottle_without_its_ring_is_reported_ringless_and_starts_no_track(cell):
+    from frodo.interfaces import ConveyorSignal
+    from frodo.robot.perception.tracker import KitTracker
     station, look = cell
     image, _ = look(-0.05, ring_on_kit=False)
     report = RgbdDetector(CFG).analyse(image, station)
-    assert len(report.bottles) == 1 and report.kits == []
+    assert len(report.bottles) == 1 and len(report.kits) == 1
+    assert report.kits[0].ring_in_base is None
+    tracker = KitTracker(CFG)
+    tracker.reset(station)
+    assert tracker.update(image.t, [ConveyorSignal(image.t, "A", 0.0, 0.03)], report.kits, "t") == []
 
 
 def test_half_hidden_ring_is_rejected_not_misplaced(cell):

@@ -25,7 +25,7 @@ class Segmenter(Protocol):
         """Boolean HxW masks of candidate objects."""
 
 
-def _base_z(frame: RgbdFrame) -> np.ndarray:
+def height_map(frame: RgbdFrame) -> np.ndarray:
     """Height above the floor of every pixel (NaN where depth is invalid)."""
     h, w = frame.depth.shape
     u, v = np.meshgrid(np.arange(w), np.arange(h))
@@ -42,7 +42,7 @@ class DepthBandSegmenter:
         self.cfg = config.perception
 
     def masks(self, frame: RgbdFrame) -> list[np.ndarray]:
-        z, tol, out = _base_z(frame), self.cfg.band_tolerance_m, []
+        z, tol, out = height_map(frame), self.cfg.band_tolerance_m, []
         for level in (RING_TOP_Z, BOTTLE_TOP_Z):
             labels, count = ndimage.label(np.abs(z - level) < tol)
             sizes = ndimage.sum_labels(np.ones_like(labels), labels, np.arange(1, count + 1))

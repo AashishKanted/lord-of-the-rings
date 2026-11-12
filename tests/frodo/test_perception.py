@@ -10,7 +10,7 @@ from frodo.robot.perception import KitDetection, Perception
 from frodo.robot.perception.detector import make_detector
 from frodo.robot.perception.tracker import KitTracker
 
-CFG = get_config()
+CFG = with_overrides(get_config(), {"perception": {"method": "oracle"}})
 BELT_Z = CELL["conveyor"]["height_m"]
 
 
@@ -118,7 +118,6 @@ def test_oracle_backend_without_ground_truth_reports_nothing():
 
 
 def test_detector_backends_are_selected_by_config():
-    assert make_detector(with_overrides(CFG, {"perception": {"method": "rgbd"}})).name == \
-        "rgbd/depth_bands"
+    assert make_detector(get_config()).name == "rgbd/depth_bands"       # the default
     with pytest.raises(ValueError):
         make_detector(with_overrides(CFG, {"perception": {"method": "magic"}}))

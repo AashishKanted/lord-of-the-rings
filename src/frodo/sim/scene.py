@@ -195,7 +195,7 @@ def _add_robot_sensors(spec):
     camera.quat, camera.fovy = quat, wrist.fovy_deg
     spec.body("bracelet_link").add_geom(name="wrist_camera_body", type=BOX, pos=camera.pos,
                                         quat=quat, size=[.035, .012, .012], rgba=[.1, .1, .1, 1],
-                                        contype=0, conaffinity=0, group=VISUAL_GROUP, mass=0)
+                                        contype=ROBOT, conaffinity=ROBOT | PARTS, mass=0.08)
     mast = sensors.cameras.mast
     x, y, z = mast.pos_m
     # The post is a real obstacle for the arm, so it collides like the rest of the robot.

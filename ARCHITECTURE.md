@@ -44,7 +44,7 @@ runs in one process and one deterministic loop, with the plant's PLC server on a
 | `frodo/robot/localization/` | EKF + scan-to-map ICP | done |
 | `frodo/robot/navigation/` | A* planner, path tracker, docking, `Navigator` | done (no obstacle reaction) |
 | `frodo/robot/frames.py` | station geometry in the robot base frame | done |
-| `frodo/robot/perception/` | detector backends (`oracle`, `rgbd`), segmenters, circle fits from depth, belt-encoder tracker, `Perception` facade | `rgbd` detector works on still frames; the mission still runs on ORACLE |
+| `frodo/robot/perception/` | detector backends (`rgbd` default, `oracle`), segmenters, circle fits from depth, belt-encoder tracker, `Perception` facade | done; drives the nominal mission |
 | `frodo/robot/manipulation/` | IK, motion profiles, `ArmController` (stow, pick-and-place cycle) | done |
 | `frodo/robot/plc.py` | Modbus line client with sequence/retry rule | done |
 | `frodo/robot/orchestrator/` | mission mode machine | done (nominal only) |
@@ -111,7 +111,13 @@ rgbd_detector              a kit = a bottle plus the ring one ring-offset downst
 
 Colour is not used to decide what an object is. `scripts/run.sh perception` runs both
 segmenters on the same frames and scores them against simulator truth
-(`results/perception_bakeoff/summary.json`). It is not wired into the mission yet.
+(`results/perception_bakeoff/summary.json`).
+
+In the mission the camera detects kits from the waiting pose and the tracker carries them
+with the belt encoder while the arm (and with it the camera) moves. A bottle seen without
+its ring keeps updating its track. After the grasp the ring slides in the fingers, so
+while carrying it the robot looks for the ring in its hand (`find_held_ring`) and averages
+those looks into the tool-to-ring offset used for placing. It does not servo on the image.
 
 ## Arm controller
 
@@ -167,8 +173,8 @@ feeds perception, as the customer allows one.
 ## Honesty markers
 
 - `apps/pick_place_demo.py` is an ORACLE run: true poses, robot pre-docked.
-- With `perception.method = "oracle"` (the current default) the mission runner gives the
-  robot true kit poses. `summary.json` says so in its `perception` field. Localization
+- With `perception.method = "oracle"` (not the default; used by the end-to-end test to keep
+  it short) the mission runner gives the robot true kit poses. `summary.json` says so in its `perception` field. Localization
   and navigation in that run are sensor-driven; perception is not.
 - `apps/nav_demo.py` and `apps/line_demo.py` exercise one subsystem each and produce no
   acceptance evidence.

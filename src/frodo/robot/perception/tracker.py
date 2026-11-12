@@ -86,11 +86,18 @@ class KitTracker:
                 if d < best_d:
                     best, best_d = track, d
             if best is None:
+                if det.ring_in_base is None:
+                    continue             # a bottle alone does not start a track
                 best = _Track(self._next_id, det, travel)
                 self._next_id += 1
                 self._tracks[best.track_id] = best
             else:
                 del free[best.track_id]
+                if det.ring_in_base is None:
+                    # Ring picked up (or hidden): keep where it was on the kit, moved along.
+                    shift = (travel - best.travel) * self.station.belt_dir
+                    det = KitDetection(det.t, best.detection.ring_in_base + shift,
+                                       det.bottle_in_base)
                 best.detection, best.travel = det, travel
 
     def _observe(self, track: _Track, t: float, travel: float, source: str) -> KitObservation:

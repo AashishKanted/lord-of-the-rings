@@ -1,8 +1,9 @@
 """End-to-end nominal mission in MuJoCo: start pose -> dock A -> five rings seated and
 accepted -> stow -> dock B -> five more.
 
-ORACLE PERCEPTION: kit poses given to the robot are simulator truth (perception.method =
-"oracle"). Localization, navigation, the arm controller, the line protocol and the customer
+ORACLE PERCEPTION: this test gives the robot true kit poses (perception "oracle"), which
+keeps it to about 1.5 minutes. The camera-driven run (the default, `scripts/run.sh mission`)
+renders the wrist camera and takes about 5 minutes; it is not run here. Localization, navigation, the arm controller, the line protocol and the customer
 line with its independent seat measurement are the real modules. This is a development
 test of the integrated stack, not a customer acceptance run.
 
@@ -25,7 +26,7 @@ TIMING, ROBOT = CELL["timing"], CELL["robot"]
 @pytest.fixture(scope="module")
 def mission(tmp_path_factory):
     out = tmp_path_factory.mktemp("nominal_seed0")
-    summary = run("nominal", out, seed=0, port=0)
+    summary = run("nominal", out, seed=0, port=0, perception="oracle")
     events = [json.loads(line) for line in (out / "events.jsonl").read_text().splitlines()]
     return summary, events
 

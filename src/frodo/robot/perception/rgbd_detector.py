@@ -12,12 +12,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy import ndimage
 
 from ...cell import CELL
 from ...interfaces import SensorFrame
 from ..frames import StationFrame
 from .geometry import CircleFit, fit_bottle, fit_ring
-from .segmenters import Segmenter, make_segmenter
+from .segmenters import Segmenter, height_map, make_segmenter
 from .types import KitDetection
 
 _K = CELL["kit"]
@@ -65,11 +66,33 @@ class RgbdDetector:
             expected = bottle.center[:2] + offset[:2]
             ring = min(report.rings, default=None,
                        key=lambda r: np.linalg.norm(r.center[:2] - expected))
-            if ring is None or np.linalg.norm(ring.center[:2] - expected) > self.cfg.pair_tolerance_m:
-                continue
+            found = ring is not None and \
+                np.linalg.norm(ring.center[:2] - expected) <= self.cfg.pair_tolerance_m
             base = bottle.center - [0, 0, CELL["bottle"]["height_m"]]
-            report.kits.append(KitDetection(image.t, ring.center, base))
+            # Without its ring a bottle can still update a kit that is already tracked.
+            report.kits.append(KitDetection(image.t, ring.center if found else None, base))
         return report
+
+    def find_held_ring(self, frame: SensorFrame, expected: np.ndarray):
+        """The ring in the gripper, looked for near where the robot believes it is holding
+        it (`expected`, ring centre in the base frame). Returns (capture time, centre) or
+        None. Depth only: the ring is the level annulus at that height."""
+        image = frame.camera
+        if image is None:
+            return None
+        z = height_map(image)
+        top = expected[2] + CELL["ring"]["thickness_m"] / 2
+        labels, count = ndimage.label(np.abs(z - top) < self.cfg.held_ring_band_m)
+        best = None
+        for index in range(1, count + 1):
+            mask = labels == index
+            if mask.sum() < self.cfg.min_mask_pixels:
+                continue
+            fit = fit_ring(image, mask, self.cfg, center_z=expected[2])
+            near = np.linalg.norm(fit.center[:2] - expected[:2]) < self.cfg.held_ring_search_m
+            if fit.valid and near and (best is None or fit.rms_m < best.rms_m):
+                best = fit
+        return None if best is None else (image.t, best.center)
 
 
 def _unique(fits: list[CircleFit], radius: float = 0.01) -> list[CircleFit]:

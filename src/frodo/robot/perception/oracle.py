@@ -51,3 +51,11 @@ class OracleDetector:
                 bottle = bottle + self._rng.normal(0.0, std, 3)
             out.append(KitDetection(frame.t, np.array(ring), np.array(bottle)))
         return out
+
+    def find_held_ring(self, frame: SensorFrame, expected: np.ndarray):
+        """ORACLE: the true ring nearest to where the robot believes it is holding one."""
+        if not frame.ground_truth:
+            return None
+        ring = min((kit.ring_in_base for kit in frame.ground_truth),
+                   key=lambda r: np.linalg.norm(r - expected))
+        return (frame.t, np.array(ring)) if np.linalg.norm(ring - expected) < 0.05 else None

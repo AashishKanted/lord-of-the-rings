@@ -10,8 +10,8 @@ import numpy as np
 class KitDetection:
     """One kit found in one sensor sample. Poses are in the robot base frame."""
     t: float                     # capture time of the sample
-    ring_in_base: np.ndarray     # xyz of the ring centre
-    bottle_in_base: np.ndarray   # xyz of the bottle axis at the bottle base (kit top surface)
+    ring_in_base: np.ndarray | None   # xyz of the ring centre; None if no ring lies on the kit
+    bottle_in_base: np.ndarray        # xyz of the bottle axis at the bottle base (kit top surface)
 
 
 @dataclass(frozen=True)

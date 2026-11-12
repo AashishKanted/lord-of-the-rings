@@ -222,6 +222,11 @@ class Orchestrator:
                 done_everywhere = all(self._settled(name) for name in self.order)
                 if done_everywhere or (goal is not None and goal != self.station):
                     self._leave(t)
+        believed = self.arm.held_ring_estimate
+        if believed is not None:
+            seen = self.perception.held_ring(frame, believed)
+            if seen is not None:
+                self.arm.measure_held_ring(*seen)
         track = self._current["track_id"] if self._current else None
         obs = self.perception.get(track)
         command = self.arm.step(frame.joints, obs, t, self.dt)
@@ -271,7 +276,8 @@ class Orchestrator:
         if cycle is not None and cycle.track_id == self._current["track_id"]:
             self._current.update(grasped_t=cycle.grasped_t, released_t=cycle.released_t,
                                  ended_t=cycle.ended_t,
-                                 release_radial_m=cycle.release_radial_m)
+                                 release_radial_m=cycle.release_radial_m,
+                                 held_ring_looks=cycle.held_ring_looks)
             self._current["failure"] = self._current["failure"] or cycle.failure
         self._current = None
 

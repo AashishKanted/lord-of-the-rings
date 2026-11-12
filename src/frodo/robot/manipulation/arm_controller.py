@@ -17,6 +17,7 @@ Stow and unstow are joint-space moves through the home posture.
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 
@@ -79,7 +80,8 @@ class CycleResult:
     grasped_t: float | None = None
     released_t: float | None = None
     ended_t: float | None = None
-    release_radial_m: float | None = None   # observed ring-over-neck error at release
+    release_radial_m: float | None = None   # ring-over-neck error at release, as estimated
+    held_ring_looks: int = 0                # camera measurements of the ring in the hand
     failure: str | None = None
 
 
@@ -106,6 +108,8 @@ class ArmController:
         self._phase_t0 = 0.0
         self._last_gripper = 0.0
         self._blocked_s, self._limit_warned = 0.0, False
+        self._tcp_history: deque[tuple[float, np.ndarray]] = deque()
+        self._looks: list[np.ndarray] = []
         if self.m.grasp not in self.m.grasps:
             raise ValueError(f"manipulation.grasp '{self.m.grasp}' is not one of "
                              f"{sorted(self.m.grasps)}")
@@ -173,6 +177,7 @@ class ArmController:
         self.cycle = CycleResult(track_id, t)
         self._grasp_offset, self._trim, self._centred_s = np.zeros(3), np.zeros(3), 0.0
         self._gripped_ticks, self._blocked_s, self._limit_warned = 0, 0.0, False
+        self._looks: list[np.ndarray] = []      # measured tool-to-ring offsets, ring in hand
         self._enter(ArmPhase.PREGRASP, t)
 
     # ---- per-tick ----
@@ -194,6 +199,9 @@ class ArmController:
             return self._track(rel, dt, self._open)
         if obs is None:
             return self._abort(t, dt, "kit track lost")
+        self._tcp_history.append((t, self.fk.tcp(joints.arm_q)))
+        while t - self._tcp_history[0][0] > 0.5:
+            self._tcp_history.popleft()
         # Blocked-tool watchdog: the arm is position controlled, so a tool that stays away
         # from where it was commanded is pushing on something.
         error = float(np.linalg.norm(self.fk.tcp(joints.arm_q) - self.ik.tcp()))
@@ -202,6 +210,23 @@ class ArmController:
             return self._abort(t, dt, f"tool {1e3 * error:.0f} mm from its commanded position "
                                       "(blocked?)")
         return self._cycle(joints, obs, t, dt, gripper_rate)
+
+    # ---- ring in hand ----
+    @property
+    def held_ring_estimate(self) -> np.ndarray | None:
+        """Where the robot believes the held ring's centre is (base frame), while carrying."""
+        if self.phase not in CARRYING or not self._tcp_history:
+            return None
+        return self._tcp_history[-1][1] - self._grasp_offset
+
+    def measure_held_ring(self, t_capture: float, ring) -> None:
+        """A look at the ring in the hand: update the tool-to-ring offset (mean of the looks).
+        The grasp-time value assumes the ring did not move as the fingers closed."""
+        if self.phase not in CARRYING or not self._tcp_history:
+            return
+        tcp = min(self._tcp_history, key=lambda item: abs(item[0] - t_capture))[1]
+        self._looks.append(tcp - np.asarray(ring, float))
+        self._grasp_offset = np.mean(self._looks, axis=0)
 
     # ---- joint-space moves ----
     def _joint_move(self, t: float, dt: float) -> ArmCommand:
@@ -269,11 +294,18 @@ class ArmController:
                 if phase is ArmPhase.LIFT:
                     self._enter(ArmPhase.TRANSFER, t)
                 elif phase is ArmPhase.TRANSFER:
-                    self._enter(ArmPhase.LOWER, t)
+                    # Above the bottle: go down only once the ring has been seen in the hand
+                    # (it slides in the fingers as they close), or after a short wait.
+                    if len(self._looks) >= m.held_ring_min_looks or in_phase > m.held_ring_wait_s:
+                        if len(self._looks) < m.held_ring_min_looks:
+                            log.warning("t=%.2f ring in hand not seen; placing on the grasp-time "
+                                        "estimate", t)
+                        self.cycle.held_ring_looks = len(self._looks)
+                        self._enter(ArmPhase.LOWER, t)
                 else:
                     # The seat only self-centres within ~2 mm, so servo the observed
                     # ring-over-neck error out (integral action) before letting go.
-                    error = (bottle - ring)[:2]
+                    error = (bottle - (tcp - self._grasp_offset))[:2]
                     radial = float(np.linalg.norm(error))
                     self._trim[:2] += m.place_trim_gain_per_s * dt * error
                     self._centred_s = self._centred_s + dt if radial < m.release_radial_m else 0.0

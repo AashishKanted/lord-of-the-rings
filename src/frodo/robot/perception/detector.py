@@ -29,6 +29,10 @@ class Detector(Protocol):
         """Kits seen in this tick's data, or None when there is no new sample this tick
         (an empty list means a sample was processed and showed no kit)."""
 
+    def find_held_ring(self, frame: SensorFrame, expected):
+        """(capture time, ring centre xyz) of the ring in the gripper, near `expected`, or
+        None when this tick has no measurement of it."""
+
 
 def make_detector(config) -> Detector:
     method = config.perception.method

@@ -52,6 +52,10 @@ class Perception:
         self._latest = {obs.track_id: obs for obs in observations}
         return observations
 
+    def held_ring(self, frame: SensorFrame, expected):
+        """Where the ring in the gripper really is: (capture time, centre xyz) or None."""
+        return self.detector.find_held_ring(frame, expected)
+
     def get(self, track_id: int | None) -> KitObservation | None:
         return self._latest.get(track_id)
 

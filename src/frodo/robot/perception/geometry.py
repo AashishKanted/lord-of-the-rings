@@ -110,16 +110,17 @@ def top_surface(frame: RgbdFrame, mask: np.ndarray, band_m: float, percentile: f
     return refined, points[keep]
 
 
-def fit_ring(frame: RgbdFrame, mask: np.ndarray, cfg) -> CircleFit:
-    """Ring lying flat on its kit. `center` z is the ring's mid-height."""
+def fit_ring(frame: RgbdFrame, mask: np.ndarray, cfg, center_z: float | None = None) -> CircleFit:
+    """Level ring; `center` z is its mid-height. It is expected lying on its kit unless
+    `center_z` gives another height (a ring held by the gripper)."""
+    center_z = RING_TOP_Z - _R["thickness_m"] / 2 if center_z is None else center_z
     mask, surface = top_surface(frame, mask, cfg.surface_band_m, 75)
     points = mask_points(frame, rim(mask))
     if len(points) < 3:
         return CircleFit("ring", np.zeros(3), np.inf, 0.0, len(points), False, "no rim points")
     xy, rms, coverage, n = _fit_center(points[:, :2], RING_RADII, cfg.rim_inlier_m)
     center = np.array([*xy, float(np.median(surface[:, 2])) - _R["thickness_m"] / 2])
-    return _judge("ring", center, rms, coverage, n, RING_TOP_Z - _R["thickness_m"] / 2, cfg,
-                  surface[:, :2], *RING_RADII)
+    return _judge("ring", center, rms, coverage, n, center_z, cfg, surface[:, :2], *RING_RADII)
 
 
 def fit_bottle(frame: RgbdFrame, mask: np.ndarray, cfg) -> CircleFit:
