@@ -123,7 +123,7 @@ class LineClient:
                 last_error = exc
                 log.warning("line command seq=%d attempt %d: no acknowledgement (%s); "
                             "reconnecting and sending it again unchanged", sequence, attempt,
-                            exc or type(exc).__name__)
+                            str(exc) or type(exc).__name__)
                 continue
             except RuntimeError as exc:             # Modbus exception: the controller said no
                 self._pending = None
