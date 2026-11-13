@@ -29,7 +29,17 @@ The PLC run adds the socket trace and controller ledger, and the human-stop run 
 
 ## Results
 
-<!-- RESULTS TABLE -->
+| Run | Belt A / B (mm/s) | Accepted | Rejects | Accepted cycle | Mission (sim) | systems-check | Evaluator | Notes |
+|---|---|---|---|---|---|---|---|---|
+| nominal seed 0 | 31.4 / 27.7 | 5 + 5 | 0 | 5.0–5.1 s | 228 s | pass | pass | |
+| nominal seed 1 | 30.1 / 34.5 | 5 + 5 | 0 | 5.1 s | 213 s | pass | pass | |
+| nominal seed 2 | 27.6 / 28.0 | 5 + 5 | 0 | 5.0–5.2 s | 240 s | pass | pass | |
+| human stop | 31.4 / 27.7 | 5 + 5 | 0 | 5.0 s (interrupted kit 9.1 s) | 228 s | pass | pass | stop 10 ms after the person entered; 3.0 s in the zone |
+| PLC retry | 31.4 / 27.7 | 5 + 5 | 0 | 5.0–5.1 s | 228 s | pass | pass | retried ASSEMBLY_DONE applied once, accepted count unchanged |
+
+Across all runs: settled ring tilt ≤ 1.5° (limit 10°), radial error ≤ 0.6 mm (limit 4 mm),
+docking error 3.1–3.6 mm (limit 25 mm). Limits: 12 s cycle, 270 s nominal and 360 s fault
+missions. Wall time was 5–8 minutes per run on a laptop CPU, with all five running in parallel.
 
 Every run is sensor-driven: lidars, odometry, IMU, the wrist RGB-D camera, the conveyor
 encoder and the Modbus line controller. A test fails if robot code imports the
@@ -56,7 +66,7 @@ each run for robot contacts.
 **Localization and navigation.** An EKF predicts the pose from odometry and the gyro.
 Point-to-line ICP of both lidar scans against the known map corrects it, with lidar
 latency compensated. The base follows an A* path, then a slow closed-loop docking
-controller brings it in. Docking error is about 3.5 mm and 0.02° (limit 25 mm, 2°).
+controller brings it in. Docking error is 3.1–3.6 mm (limit 25 mm, 2°).
 
 **Perception.** The wrist camera looks straight down from the arm's waiting pose.
 
@@ -77,8 +87,8 @@ sits in the hand (it slides about 10 mm on closing) and places using that measur
 **Manipulation.** A Cartesian tracker: a phase machine sets tool goals relative to a
 frame riding on the belt (the ring, then the bottle), and differential IK (mink)
 follows them. The ring is pinched across its 80 mm outer diameter, centred over the
-neck within 1 mm, and released 2 mm above its seat. Settled tilt is 0.4–1.3° (limit
-10°) and radial error 0.1–0.5 mm (limit 4 mm).
+neck within 1 mm, and released 2 mm above its seat. Settled tilt is at most 1.5°
+(limit 10°) and radial error at most 0.6 mm (limit 4 mm).
 
 **Grasp constraint.** A weld between gripper and ring, engaged only when all of these
 hold:
@@ -130,7 +140,7 @@ request frames, the full socket trace and the controller ledger.
 
 | | Budget (starter) | Measured |
 |---|---|---|
-| Accepted cycle | 11.8 s with 25 % reserve | 5.0–5.1 s |
+| Accepted cycle | 11.8 s with 25 % reserve | 5.0–5.2 s |
 | Nominal mission | 270 s limit | 213–240 s |
 
 The mission is dominated by belt spacing and downstream inspection, not robot motion.

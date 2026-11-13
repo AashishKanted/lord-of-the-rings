@@ -1,0 +1,86 @@
+[
+ {
+  "sequence": 1,
+  "station": 1,
+  "kit_id": 0,
+  "command": 1
+ },
+ {
+  "sequence": 2,
+  "station": 1,
+  "kit_id": 1,
+  "command": 3
+ },
+ {
+  "sequence": 3,
+  "station": 1,
+  "kit_id": 2,
+  "command": 3
+ },
+ {
+  "sequence": 4,
+  "station": 1,
+  "kit_id": 3,
+  "command": 3
+ },
+ {
+  "sequence": 5,
+  "station": 1,
+  "kit_id": 4,
+  "command": 3
+ },
+ {
+  "sequence": 6,
+  "station": 1,
+  "kit_id": 5,
+  "command": 3
+ },
+ {
+  "sequence": 7,
+  "station": 1,
+  "kit_id": 0,
+  "command": 2
+ },
+ {
+  "sequence": 8,
+  "station": 2,
+  "kit_id": 0,
+  "command": 1
+ },
+ {
+  "sequence": 9,
+  "station": 2,
+  "kit_id": 6,
+  "command": 3
+ },
+ {
+  "sequence": 10,
+  "station": 2,
+  "kit_id": 7,
+  "command": 3
+ },
+ {
+  "sequence": 11,
+  "station": 2,
+  "kit_id": 8,
+  "command": 3
+ },
+ {
+  "sequence": 12,
+  "station": 2,
+  "kit_id": 9,
+  "command": 3
+ },
+ {
+  "sequence": 13,
+  "station": 2,
+  "kit_id": 10,
+  "command": 3
+ },
+ {
+  "sequence": 14,
+  "station": 2,
+  "kit_id": 0,
+  "command": 2
+ }
+]

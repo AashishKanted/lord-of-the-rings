@@ -1,0 +1,185 @@
+11:54:18.045 INFO    plc.py:47 | PLC test double listening on 127.0.0.1:46209
+11:54:18.184 INFO    mission.py:99 | mission start: scenario=human_stop seed=0 belt={'A': 0.0314, 'B': 0.0277} phase={'A': 0.041, 'B': 0.017} perception=rgbd
+11:54:18.350 INFO    mission.py:207 | t=0.00 mode idle -> navigate (A)
+11:54:18.353 INFO    navigator.py:124 | path to dock A: 2 waypoints, 2.09 m
+11:54:18.354 WARNING monitor.py:137 | t=0.00 SAFETY STOP: lidar data missing or stale
+11:54:19.036 INFO    monitor.py:139 | t=0.51 safety stop cleared
+11:54:25.423 INFO    navigator.py:103 | pre-dock reached for A, switching to docking
+11:54:25.424 INFO    mission.py:207 | t=7.52 mode navigate -> dock (A)
+11:54:33.176 INFO    navigator.py:109 | docked at A: estimated error 3.2 mm, -0.01 deg
+11:54:33.285 INFO    pipeline.py:48 | perception started at station A (rgbd/depth_bands)
+11:54:33.287 INFO    mission.py:207 | t=13.84 mode dock -> manipulate (A)
+11:54:33.288 INFO    line.py:161 | t=13.842 feeder A enabled
+11:54:33.336 INFO    line.py:201 | t=13.884 release kit 1 at A (kit_A0)
+11:54:45.015 INFO    line.py:221 | t=18.662 kit 1 entered the work zone at A
+11:54:45.069 INFO    mission.py:121 | t=18.69 kit 1 arrived at A
+11:54:45.160 INFO    mission.py:296 | t=18.70 cycle start: kit 1 (track 1), bottle at local x -0.299 m
+11:54:49.423 INFO    actuation.py:184 | t=20.40 grasp weld engaged on kit_A0_ring
+11:54:58.391 INFO    mission.py:311 | t=23.13 ASSEMBLY_DONE kit 1 at A (4.43 s after cycle start)
+11:54:58.392 INFO    actuation.py:163 | t=23.13 released kit_A0_ring (release requested)
+11:55:00.425 INFO    line.py:230 | t=23.754 kit 1 seat verified, cycle 5.09 s
+11:55:10.715 INFO    line.py:201 | t=28.216 release kit 2 at A (kit_A1)
+11:55:23.837 INFO    line.py:221 | t=32.994 kit 2 entered the work zone at A
+11:55:23.857 INFO    mission.py:121 | t=33.00 kit 2 arrived at A
+11:55:23.857 INFO    mission.py:296 | t=33.00 cycle start: kit 2 (track 2), bottle at local x -0.300 m
+11:55:27.715 INFO    human_stop.py:87 | t=34.46 person starts walking toward the robot
+11:55:28.263 INFO    actuation.py:184 | t=34.69 grasp weld engaged on kit_A1_ring
+11:55:31.152 INFO    human_stop.py:102 | t=35.60 person entered the work zone
+11:55:31.203 WARNING monitor.py:84 | t=35.61 SAFETY STOP (latched, base and arm): object 991 mm from the base inside the 1.0 m work zone
+11:55:37.637 INFO    human_stop.py:106 | t=38.60 person left the work zone
+11:55:38.657 INFO    human_stop.py:110 | t=39.10 operator presses acknowledge
+11:55:38.659 INFO    monitor.py:96 | t=39.10 safety stop acknowledged, zone clear: resuming
+11:55:38.659 INFO    mission.py:203 | t=39.10 re-acquired kit 2 after the stop
+11:55:45.728 INFO    mission.py:311 | t=41.43 ASSEMBLY_DONE kit 2 at A (8.43 s after cycle start)
+11:55:45.729 INFO    actuation.py:163 | t=41.43 released kit_A1_ring (release requested)
+11:55:47.809 INFO    line.py:230 | t=42.054 kit 2 seat verified, cycle 9.06 s
+11:55:49.168 INFO    line.py:201 | t=42.546 release kit 3 at A (kit_A2)
+11:55:58.356 INFO    line.py:237 | t=45.732 kit 1 inspection at A: ACCEPTED (robot done=True)
+11:55:58.565 INFO    mission.py:128 | t=45.80 line: kit 1 at A ACCEPTED (accepted 1, rejected 0)
+11:56:02.593 INFO    line.py:221 | t=47.324 kit 3 entered the work zone at A
+11:56:02.802 INFO    mission.py:121 | t=47.40 kit 3 arrived at A
+11:56:02.803 INFO    mission.py:296 | t=47.40 cycle start: kit 3 (track 3), bottle at local x -0.298 m
+11:56:07.264 INFO    actuation.py:184 | t=49.09 grasp weld engaged on kit_A2_ring
+11:56:15.985 INFO    mission.py:311 | t=51.81 ASSEMBLY_DONE kit 3 at A (4.41 s after cycle start)
+11:56:15.986 INFO    actuation.py:163 | t=51.81 released kit_A2_ring (release requested)
+11:56:18.102 INFO    line.py:230 | t=52.434 kit 3 seat verified, cycle 5.11 s
+11:56:28.836 INFO    line.py:201 | t=56.878 release kit 4 at A (kit_A0)
+11:56:37.645 INFO    line.py:237 | t=60.064 kit 2 inspection at A: ACCEPTED (robot done=True)
+11:56:37.728 INFO    mission.py:128 | t=60.10 line: kit 2 at A ACCEPTED (accepted 2, rejected 0)
+11:56:42.087 INFO    line.py:221 | t=61.656 kit 4 entered the work zone at A
+11:56:42.184 INFO    mission.py:121 | t=61.70 kit 4 arrived at A
+11:56:42.235 INFO    mission.py:296 | t=61.70 cycle start: kit 4 (track 4), bottle at local x -0.299 m
+11:56:46.287 INFO    actuation.py:184 | t=63.39 grasp weld engaged on kit_A0_ring
+11:56:53.326 INFO    mission.py:311 | t=66.11 ASSEMBLY_DONE kit 4 at A (4.41 s after cycle start)
+11:56:53.326 INFO    actuation.py:163 | t=66.11 released kit_A0_ring (release requested)
+11:56:54.930 INFO    line.py:230 | t=66.726 kit 4 seat verified, cycle 5.07 s
+11:57:03.448 INFO    line.py:201 | t=71.208 release kit 5 at A (kit_A1)
+11:57:10.385 INFO    line.py:237 | t=74.394 kit 3 inspection at A: ACCEPTED (robot done=True)
+11:57:10.520 INFO    mission.py:128 | t=74.45 line: kit 3 at A ACCEPTED (accepted 3, rejected 0)
+11:57:13.833 INFO    line.py:221 | t=75.986 kit 5 entered the work zone at A
+11:57:13.836 INFO    mission.py:121 | t=75.99 kit 5 arrived at A
+11:57:13.837 INFO    mission.py:296 | t=75.99 cycle start: kit 5 (track 5), bottle at local x -0.300 m
+11:57:17.432 INFO    actuation.py:184 | t=77.69 grasp weld engaged on kit_A1_ring
+11:57:24.183 INFO    mission.py:311 | t=80.41 ASSEMBLY_DONE kit 5 at A (4.42 s after cycle start)
+11:57:24.183 INFO    actuation.py:163 | t=80.41 released kit_A1_ring (release requested)
+11:57:25.813 INFO    line.py:230 | t=81.026 kit 5 seat verified, cycle 5.04 s
+11:57:38.170 INFO    line.py:237 | t=88.726 kit 4 inspection at A: ACCEPTED (robot done=True)
+11:57:38.214 INFO    mission.py:128 | t=88.75 line: kit 4 at A ACCEPTED (accepted 4, rejected 0)
+11:58:00.678 INFO    line.py:237 | t=103.056 kit 5 inspection at A: ACCEPTED (robot done=True)
+11:58:00.887 INFO    mission.py:128 | t=103.16 line: kit 5 at A ACCEPTED (accepted 5, rejected 0)
+11:58:00.888 INFO    mission.py:207 | t=103.16 mode manipulate -> stow (A)
+11:58:06.385 INFO    mission.py:207 | t=108.01 mode stow -> navigate (B)
+11:58:06.394 INFO    navigator.py:124 | path to dock B: 2 waypoints, 1.60 m
+11:58:14.519 INFO    navigator.py:103 | pre-dock reached for B, switching to docking
+11:58:14.519 INFO    mission.py:207 | t=115.26 mode navigate -> dock (B)
+11:58:22.341 INFO    navigator.py:109 | docked at B: estimated error 3.4 mm, -0.00 deg
+11:58:22.444 INFO    pipeline.py:48 | perception started at station B (rgbd/depth_bands)
+11:58:22.444 INFO    mission.py:207 | t=122.12 mode dock -> manipulate (B)
+11:58:22.445 INFO    line.py:161 | t=122.122 feeder B enabled
+11:58:22.450 INFO    line.py:201 | t=122.140 release kit 6 at B (kit_B0)
+11:58:33.369 INFO    line.py:221 | t=127.556 kit 6 entered the work zone at B
+11:58:33.456 INFO    mission.py:121 | t=127.58 kit 6 arrived at B
+11:58:33.457 INFO    mission.py:296 | t=127.58 cycle start: kit 6 (track 6), bottle at local x -0.299 m
+11:58:36.801 INFO    actuation.py:184 | t=129.27 grasp weld engaged on kit_B0_ring
+11:58:42.923 INFO    mission.py:311 | t=132.00 ASSEMBLY_DONE kit 6 at B (4.42 s after cycle start)
+11:58:42.923 INFO    actuation.py:163 | t=132.00 released kit_B0_ring (release requested)
+11:58:44.513 INFO    line.py:230 | t=132.626 kit 6 seat verified, cycle 5.07 s
+11:58:54.739 INFO    line.py:201 | t=138.386 release kit 7 at B (kit_B1)
+11:59:06.386 INFO    line.py:221 | t=143.802 kit 7 entered the work zone at B
+11:59:06.412 INFO    mission.py:121 | t=143.82 kit 7 arrived at B
+11:59:06.412 INFO    mission.py:296 | t=143.82 cycle start: kit 7 (track 7), bottle at local x -0.299 m
+11:59:10.040 INFO    actuation.py:184 | t=145.51 grasp weld engaged on kit_B1_ring
+11:59:16.979 INFO    mission.py:311 | t=148.23 ASSEMBLY_DONE kit 7 at B (4.41 s after cycle start)
+11:59:16.979 INFO    actuation.py:163 | t=148.23 released kit_B1_ring (release requested)
+11:59:18.612 INFO    line.py:230 | t=148.854 kit 7 seat verified, cycle 5.05 s
+11:59:29.170 INFO    line.py:201 | t=154.630 release kit 8 at B (kit_B2)
+11:59:36.940 INFO    line.py:237 | t=158.242 kit 6 inspection at B: ACCEPTED (robot done=True)
+11:59:37.083 INFO    mission.py:128 | t=158.32 line: kit 6 at B ACCEPTED (accepted 1, rejected 0)
+11:59:40.919 INFO    line.py:221 | t=160.046 kit 8 entered the work zone at B
+11:59:41.045 INFO    mission.py:121 | t=160.12 kit 8 arrived at B
+11:59:41.046 INFO    mission.py:296 | t=160.12 cycle start: kit 8 (track 8), bottle at local x -0.298 m
+11:59:44.526 INFO    actuation.py:184 | t=161.81 grasp weld engaged on kit_B2_ring
+11:59:51.197 INFO    mission.py:311 | t=164.52 ASSEMBLY_DONE kit 8 at B (4.40 s after cycle start)
+11:59:51.198 INFO    actuation.py:163 | t=164.52 released kit_B2_ring (release requested)
+11:59:52.881 INFO    line.py:230 | t=165.152 kit 8 seat verified, cycle 5.11 s
+12:00:03.462 INFO    line.py:201 | t=170.876 release kit 9 at B (kit_B0)
+12:00:12.996 INFO    line.py:237 | t=174.488 kit 7 inspection at B: ACCEPTED (robot done=True)
+12:00:13.119 INFO    mission.py:128 | t=174.52 line: kit 7 at B ACCEPTED (accepted 2, rejected 0)
+12:00:17.710 INFO    line.py:221 | t=176.292 kit 9 entered the work zone at B
+12:00:17.808 INFO    mission.py:121 | t=176.32 kit 9 arrived at B
+12:00:17.809 INFO    mission.py:296 | t=176.32 cycle start: kit 9 (track 9), bottle at local x -0.299 m
+12:00:22.228 INFO    actuation.py:184 | t=178.01 grasp weld engaged on kit_B0_ring
+12:00:30.245 INFO    mission.py:311 | t=180.73 ASSEMBLY_DONE kit 9 at B (4.41 s after cycle start)
+12:00:30.246 INFO    actuation.py:163 | t=180.73 released kit_B0_ring (release requested)
+12:00:32.193 INFO    line.py:230 | t=181.354 kit 9 seat verified, cycle 5.06 s
+12:00:44.652 INFO    line.py:201 | t=187.122 release kit 10 at B (kit_B1)
+12:00:53.414 INFO    line.py:237 | t=190.732 kit 8 inspection at B: ACCEPTED (robot done=True)
+12:00:53.629 INFO    mission.py:128 | t=190.82 line: kit 8 at B ACCEPTED (accepted 3, rejected 0)
+12:00:57.719 INFO    line.py:221 | t=192.538 kit 10 entered the work zone at B
+12:00:57.919 INFO    mission.py:121 | t=192.62 kit 10 arrived at B
+12:00:57.920 INFO    mission.py:296 | t=192.62 cycle start: kit 10 (track 10), bottle at local x -0.298 m
+12:01:01.971 INFO    actuation.py:184 | t=194.31 grasp weld engaged on kit_B1_ring
+12:01:09.660 INFO    mission.py:311 | t=197.03 ASSEMBLY_DONE kit 10 at B (4.41 s after cycle start)
+12:01:09.661 INFO    actuation.py:163 | t=197.03 released kit_B1_ring (release requested)
+12:01:11.438 INFO    line.py:230 | t=197.648 kit 10 seat verified, cycle 5.11 s
+12:01:31.051 INFO    line.py:237 | t=206.978 kit 9 inspection at B: ACCEPTED (robot done=True)
+12:01:31.116 INFO    mission.py:128 | t=207.02 line: kit 9 at B ACCEPTED (accepted 4, rejected 0)
+12:02:00.862 INFO    line.py:237 | t=223.224 kit 10 inspection at B: ACCEPTED (robot done=True)
+12:02:01.035 INFO    mission.py:128 | t=223.32 line: kit 10 at B ACCEPTED (accepted 5, rejected 0)
+12:02:01.036 INFO    mission.py:207 | t=223.32 mode manipulate -> stow (B)
+12:02:07.451 INFO    mission.py:207 | t=228.17 mode stow -> done (B)
+12:02:07.875 INFO    events.py:71 | wrote 4611 events to evidence/human-stop/events.jsonl
+12:02:08.016 INFO    mission.py:239 | wrote video evidence/human-stop/demo.mp4 (6846 frames)
+12:02:08.703 INFO    mission.py:196 | mission end: t=228.2 s, accepted {'A': 5, 'B': 5}, checker PASSED (0 violations), wall 470 s
+{
+  "scenario": "human_stop",
+  "seed": 0,
+  "perception": "sensor-driven: wrist RGB-D camera, rgbd/depth_bands",
+  "belt_speed_mps": {
+    "A": 0.0314,
+    "B": 0.0277
+  },
+  "robot_finished": true,
+  "simulated_s": 228.17,
+  "wall_s": 470.4,
+  "counts": {
+    "A": {
+      "accepted": 5,
+      "rejected": 0,
+      "in_flight": 0
+    },
+    "B": {
+      "accepted": 5,
+      "rejected": 0,
+      "in_flight": 0
+    }
+  },
+  "accepted_cycle_s": {
+    "min": 5.039999999988254,
+    "max": 9.060000000011073
+  },
+  "docks": [
+    {
+      "station": "A",
+      "t": 13.84,
+      "true_error_mm": 3.47,
+      "true_yaw_error_deg": 0.015
+    },
+    {
+      "station": "B",
+      "t": 122.12,
+      "true_error_mm": 3.59,
+      "true_yaw_error_deg": 0.007
+    }
+  ],
+  "starter_checker": {
+    "passed": true,
+    "accepted": {
+      "1": 5,
+      "2": 5
+    },
+    "violations": [],
+    "limitation": "Export consistency only; independently rerun simulation and inspect measurement bridge.",
+    "note": "systems-check verifies log consistency only"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "accepted": {
+    "1": 5,
+    "2": 5
+  },
+  "violations": [],
+  "limitation": "Export consistency only; independently rerun simulation and inspect measurement bridge."
+}

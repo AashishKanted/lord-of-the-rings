@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "checks": {
+    "collisions": {
+      "passed": true,
+      "unexpected_contacts_control_ticks": {},
+      "allowed": "gripper fingers touching a ring",
+      "sampling": "contacts checked every 10 ms control tick"
+    },
+    "belt_motion": {
+      "passed": true,
+      "kit_position_error_max_m": 2.5e-05,
+      "tolerance_m": 0.001,
+      "kit_speed_deviation_max_mps": 0.002046,
+      "speed_deviation_worst_at": [
+        158.2,
+        "kit_B1"
+      ],
+      "samples": 43916,
+      "arrivals_at_least_one_pitch_apart": true,
+      "declared_speed_mps": {
+        "1": 0.0276,
+        "2": 0.028
+      }
+    },
+    "seating_hold": {
+      "passed": true,
+      "kits_recomputed": 10,
+      "mismatches_logged_vs_recomputed": {}
+    },
+    "stale_work_rejected": {
+      "passed": true,
+      "rejected_kits": [],
+      "accepted_without_in_window_seat_or_rejected_with_one": []
+    }
+  },
+  "note": "computed from simulator state by the plant side, not by robot code"
+}

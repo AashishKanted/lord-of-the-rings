@@ -1,0 +1,345 @@
+{
+  "scenario": "nominal",
+  "seed": 2,
+  "perception": "sensor-driven: wrist RGB-D camera, rgbd/depth_bands",
+  "wrist_camera_contacts": [],
+  "localization_navigation": "simulated lidar + odometry + IMU (sensor-driven)",
+  "safety_monitor": "rudimentary lidar slow/stop on the base; no human-zone latch, arm not supervised",
+  "leave_policy": "after_accepted",
+  "belt_speed_mps": {
+    "A": 0.0276,
+    "B": 0.028
+  },
+  "release_phase_s": {
+    "A": 0.814,
+    "B": 0.092
+  },
+  "robot_finished": true,
+  "robot_mode_at_end": "done",
+  "simulated_s": 240.07,
+  "wall_s": 369.4,
+  "mujoco_version": "3.8.1",
+  "counts": {
+    "A": {
+      "accepted": 5,
+      "rejected": 0,
+      "in_flight": 0
+    },
+    "B": {
+      "accepted": 5,
+      "rejected": 0,
+      "in_flight": 0
+    }
+  },
+  "accepted_cycle_s": {
+    "min": 5.030000000006147,
+    "max": 5.154000000006299
+  },
+  "docks": [
+    {
+      "station": "A",
+      "t": 13.84,
+      "true_error_mm": 3.44,
+      "true_yaw_error_deg": 0.018
+    },
+    {
+      "station": "B",
+      "t": 135.09,
+      "true_error_mm": 3.64,
+      "true_yaw_error_deg": 0.014
+    }
+  ],
+  "max_base_speed_mps": 0.3335,
+  "max_base_speed_arm_unstowed_mps": 0.00011,
+  "kits": [
+    {
+      "kit_id": 1,
+      "station": "A",
+      "carrier": "kit_A0",
+      "belt_speed_mps": 0.0276,
+      "released_t": 14.656000000001564,
+      "arrived_t": 20.091999999999743,
+      "seat_verified_t": 25.16999999999693,
+      "cycle_s": 5.077999999997186,
+      "seat_in_window": true,
+      "inspected_t": 50.88800000001623,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 2,
+      "station": "A",
+      "carrier": "kit_A1",
+      "belt_speed_mps": 0.0276,
+      "released_t": 30.96199999999372,
+      "arrived_t": 36.39799999999852,
+      "seat_verified_t": 41.428000000004666,
+      "cycle_s": 5.030000000006147,
+      "seat_in_window": true,
+      "inspected_t": 67.1940000000248,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 3,
+      "station": "A",
+      "carrier": "kit_A2",
+      "belt_speed_mps": 0.0276,
+      "released_t": 47.2660000000118,
+      "arrived_t": 52.702000000018444,
+      "seat_verified_t": 57.85600000002474,
+      "cycle_s": 5.154000000006299,
+      "seat_in_window": true,
+      "inspected_t": 83.4979999999868,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 4,
+      "station": "A",
+      "carrier": "kit_A0",
+      "belt_speed_mps": 0.0276,
+      "released_t": 63.570000000031726,
+      "arrived_t": 69.00600000002058,
+      "seat_verified_t": 74.10600000000869,
+      "cycle_s": 5.099999999988114,
+      "seat_in_window": true,
+      "inspected_t": 99.8019999999488,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 5,
+      "station": "A",
+      "carrier": "kit_A1",
+      "belt_speed_mps": 0.0276,
+      "released_t": 79.87399999999525,
+      "arrived_t": 85.30999999998258,
+      "seat_verified_t": 90.38599999997075,
+      "cycle_s": 5.07599999998817,
+      "seat_in_window": true,
+      "inspected_t": 116.10599999991081,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 6,
+      "station": "B",
+      "carrier": "kit_B0",
+      "belt_speed_mps": 0.028,
+      "released_t": 135.18399999991738,
+      "arrived_t": 140.54199999994296,
+      "seat_verified_t": 145.65599999996738,
+      "cycle_s": 5.114000000024419,
+      "seat_in_window": true,
+      "inspected_t": 170.9000000000879,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 7,
+      "station": "B",
+      "carrier": "kit_B1",
+      "belt_speed_mps": 0.028,
+      "released_t": 151.25599999999412,
+      "arrived_t": 156.6140000000197,
+      "seat_verified_t": 161.65400000004377,
+      "cycle_s": 5.040000000024065,
+      "seat_in_window": true,
+      "inspected_t": 186.97200000016466,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 8,
+      "station": "B",
+      "carrier": "kit_B2",
+      "belt_speed_mps": 0.028,
+      "released_t": 167.32800000007086,
+      "arrived_t": 172.68600000009644,
+      "seat_verified_t": 177.75600000012065,
+      "cycle_s": 5.0700000000242085,
+      "seat_in_window": true,
+      "inspected_t": 203.0440000002414,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 9,
+      "station": "B",
+      "carrier": "kit_B0",
+      "belt_speed_mps": 0.028,
+      "released_t": 183.4000000001476,
+      "arrived_t": 188.75800000017318,
+      "seat_verified_t": 193.84600000019748,
+      "cycle_s": 5.088000000024294,
+      "seat_in_window": true,
+      "inspected_t": 219.11600000031814,
+      "robot_done": true,
+      "accepted": true
+    },
+    {
+      "kit_id": 10,
+      "station": "B",
+      "carrier": "kit_B1",
+      "belt_speed_mps": 0.028,
+      "released_t": 199.47000000022433,
+      "arrived_t": 204.82800000024992,
+      "seat_verified_t": 209.9540000002744,
+      "cycle_s": 5.126000000024476,
+      "seat_in_window": true,
+      "inspected_t": 235.18600000039487,
+      "robot_done": true,
+      "accepted": true
+    }
+  ],
+  "robot_attempts": [
+    {
+      "kit_id": 1,
+      "station": "A",
+      "started_t": 20.119999999999727,
+      "track_id": 1,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 21.82999999999878,
+      "released_t": 24.539999999997278,
+      "ended_t": 26.26999999999632,
+      "release_radial_m": 0.00036994802933350214,
+      "held_ring_looks": 29
+    },
+    {
+      "kit_id": 2,
+      "station": "A",
+      "started_t": 36.39999999999852,
+      "track_id": 2,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 38.1000000000006,
+      "released_t": 40.81000000000391,
+      "ended_t": 42.520000000006,
+      "release_radial_m": 0.0001814482995478407,
+      "held_ring_looks": 28
+    },
+    {
+      "kit_id": 3,
+      "station": "A",
+      "started_t": 52.800000000018564,
+      "track_id": 3,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 54.520000000020666,
+      "released_t": 57.23000000002398,
+      "ended_t": 58.95000000002608,
+      "release_radial_m": 0.00015255296769509753,
+      "held_ring_looks": 26
+    },
+    {
+      "kit_id": 4,
+      "station": "A",
+      "started_t": 69.06000000002045,
+      "track_id": 4,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 70.77000000001647,
+      "released_t": 73.48000000001015,
+      "ended_t": 75.21000000000612,
+      "release_radial_m": 0.00019889700889538114,
+      "held_ring_looks": 26
+    },
+    {
+      "kit_id": 5,
+      "station": "A",
+      "started_t": 85.33999999998251,
+      "track_id": 5,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 87.04999999997852,
+      "released_t": 89.75999999997221,
+      "ended_t": 91.48999999996818,
+      "release_radial_m": 0.00018995789207314787,
+      "held_ring_looks": 29
+    },
+    {
+      "kit_id": 6,
+      "station": "B",
+      "started_t": 140.61999999994333,
+      "track_id": 6,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 142.31999999995145,
+      "released_t": 145.0299999999644,
+      "ended_t": 146.75999999997265,
+      "release_radial_m": 0.00027240741039644383,
+      "held_ring_looks": 26
+    },
+    {
+      "kit_id": 7,
+      "station": "B",
+      "started_t": 156.62000000001973,
+      "track_id": 7,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 158.32000000002785,
+      "released_t": 161.0300000000408,
+      "ended_t": 162.750000000049,
+      "release_radial_m": 0.00017255941960188313,
+      "held_ring_looks": 29
+    },
+    {
+      "kit_id": 8,
+      "station": "B",
+      "started_t": 172.7200000000966,
+      "track_id": 8,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 174.42000000010472,
+      "released_t": 177.1400000001177,
+      "ended_t": 178.86000000012592,
+      "release_radial_m": 0.00030965829423050236,
+      "held_ring_looks": 27
+    },
+    {
+      "kit_id": 9,
+      "station": "B",
+      "started_t": 188.82000000017348,
+      "track_id": 9,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 190.5200000001816,
+      "released_t": 193.23000000019454,
+      "ended_t": 194.95000000020275,
+      "release_radial_m": 0.0001583089403548421,
+      "held_ring_looks": 27
+    },
+    {
+      "kit_id": 10,
+      "station": "B",
+      "started_t": 204.92000000025035,
+      "track_id": 10,
+      "reported_done": true,
+      "failure": null,
+      "grasped_t": 206.62000000025847,
+      "released_t": 209.3300000002714,
+      "ended_t": 211.06000000027967,
+      "release_radial_m": 0.00024317806672778983,
+      "held_ring_looks": 29
+    }
+  ],
+  "line_commands_applied": 14,
+  "starter_checker": {
+    "passed": true,
+    "accepted": {
+      "1": 5,
+      "2": 5
+    },
+    "violations": [],
+    "limitation": "Export consistency only; independently rerun simulation and inspect measurement bridge.",
+    "note": "systems-check verifies log consistency only"
+  },
+  "evaluator": {
+    "passed": true,
+    "failed_checks": [],
+    "file": "evidence/nominal-seed-2/evaluation.json"
+  },
+  "events_file": "evidence/nominal-seed-2/events.jsonl"
+}
