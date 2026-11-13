@@ -35,6 +35,7 @@ from ..config import ROOT, get_config, with_overrides
 from ..interfaces import Mode
 from ..log import get_logger, setup_logging
 from ..plant import feeder
+from ..plant.evaluator import Evaluator
 from ..plant.line import Line
 from ..plant.recorder import MotionRecorder
 from ..robot.orchestrator.mission import Orchestrator
@@ -92,6 +93,7 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
         sensors.set_belt_speed_source(line.belt_speed)
         recorder = MotionRecorder(model, line.events, cfg.mission.sample_period_s)
         fault.start(line, data)
+        evaluator = Evaluator(model, line)
         robot = Orchestrator(robot_model, LineClient(cfg.plant.plc_host,
                                                      fault.robot_port(line.port)), cfg)
         log.info("mission start: scenario=%s seed=%d belt=%s phase=%s perception=%s", scenario,
@@ -132,6 +134,7 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
                                        or model.body(model.geom_bodyid[other]).name)
             if recorder_video is not None:
                 recorder_video.frame(data, robot.mode.value, robot.station, frame.camera)
+            evaluator.tick(data)
             fault.tick(model, data, robot, line)
             if on_tick is not None and on_tick(model, data, robot) is False:
                 log.info("t=%.2f run stopped by the caller", data.time)
@@ -142,6 +145,7 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
         events = list(line.events.events)
         commands = line.plc.command_ledger()
         fault.write_files(out)
+        raw_path = getattr(line, "raw_path", None)
         fault_report = fault.report()
     fault.close()
     sensors.close()
@@ -150,6 +154,8 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
     wall = time.perf_counter() - wall
 
     verdict = check(events, scenario)
+    evaluation = evaluator.finish(events, kits, raw_path, scenario)
+    (out / "evaluation.json").write_text(json.dumps(evaluation, indent=2, default=str))
     accepted_kits = [k for k in kits if k["accepted"]]
     cycles = [k["cycle_s"] for k in accepted_kits if k["cycle_s"] is not None]
     summary = {
@@ -179,6 +185,10 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
         "robot_attempts": robot.attempts,
         "line_commands_applied": len(commands),
         "starter_checker": {**verdict, "note": "systems-check verifies log consistency only"},
+        "evaluator": {"passed": evaluation["passed"],
+                      "failed_checks": [k for k, c in evaluation["checks"].items()
+                                        if not c["passed"]],
+                      "file": str(out / "evaluation.json")},
         **fault_report,
         "events_file": str(out / "events.jsonl"),
     }

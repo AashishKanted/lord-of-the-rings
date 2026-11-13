@@ -91,6 +91,11 @@ def test_base_obeys_speed_limits_and_stands_still_while_the_arm_works(mission):
     assert summary["max_base_speed_arm_unstowed_mps"] <= ROBOT["assembly_base_speed_max_mps"]
 
 
+def test_customer_side_evaluator_passes(mission):
+    summary, _ = mission
+    assert summary["evaluator"]["passed"], summary["evaluator"]["failed_checks"]
+
+
 def test_starter_checker_finds_the_log_consistent(mission):
     _, events = mission
     verdict = check(events, "nominal")

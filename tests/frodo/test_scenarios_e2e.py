@@ -50,6 +50,11 @@ def test_stop_is_sensor_triggered_fast_and_holds_until_acknowledged(human):
                 and t["human_enter"] <= e["t"] <= t["resume"]]
 
 
+def test_customer_side_evaluator_passes_both_fault_runs(human, retry):
+    for summary, _, _ in (human, retry):
+        assert summary["evaluator"]["passed"], summary["evaluator"]["failed_checks"]
+
+
 def test_plc_retry_is_recorded_with_real_frames_and_applied_once(retry):
     summary, events, out = retry
     verdict = check(events, "plc_retry")
