@@ -39,13 +39,13 @@ from ..plant.line import Line
 from ..plant.recorder import MotionRecorder
 from ..robot.orchestrator.mission import Orchestrator
 from ..robot.plc import LineClient
+from ..scenarios import SCENARIOS, make_scenario
 from ..sim.actuation import ActuatorBridge
 from ..sim.oracle import OracleKitSource
 from ..sim.scene import build_spec, reset
 from ..sim.sensors import SensorSuite
 
 log = get_logger(__name__)
-SCENARIOS = ("nominal",)
 
 
 def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int | None = None,
@@ -58,19 +58,21 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
     compiled; ``on_tick(model, data, robot)`` runs after every control tick and stops the
     run by returning False. The robot never sees either."""
     if scenario not in SCENARIOS:
-        raise NotImplementedError(f"scenario '{scenario}' is not implemented (have: {SCENARIOS})")
+        raise ValueError(f"unknown scenario '{scenario}' (have: {SCENARIOS})")
     cfg = config or get_config()
     if perception is not None:
         cfg = with_overrides(cfg, {"perception": {"method": perception}})
     seed = cfg.sim.seed if seed is None else seed
     out = Path(out_dir or ROOT / "results" / f"{scenario}_seed{seed}")
     out.mkdir(parents=True, exist_ok=True)
-    limit = cfg.mission.time_limit_s if time_limit_s is None else time_limit_s
+    fault = make_scenario(scenario, cfg)
+    limit = time_limit_s or fault.time_limit_s or cfg.mission.time_limit_s
     oracle_perception = cfg.perception.method == "oracle"
     params = feeder.run_parameters(belt_speed_mps) if belt_speed_mps is not None \
         else feeder.draw_run_parameters(seed, cfg)
 
     spec = build_spec(feeder.pool_layout(cfg))
+    fault.add_to_scene(spec)
     if add_to_scene is not None:
         add_to_scene(spec)
     model = spec.compile()
@@ -89,7 +91,9 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
               port=cfg.plant.plc_port if port is None else port) as line:
         sensors.set_belt_speed_source(line.belt_speed)
         recorder = MotionRecorder(model, line.events, cfg.mission.sample_period_s)
-        robot = Orchestrator(robot_model, LineClient(cfg.plant.plc_host, line.port), cfg)
+        fault.start(line, data)
+        robot = Orchestrator(robot_model, LineClient(cfg.plant.plc_host,
+                                                     fault.robot_port(line.port)), cfg)
         log.info("mission start: scenario=%s seed=%d belt=%s phase=%s perception=%s", scenario,
                  seed, params.belt_speed_mps, params.release_phase_s, cfg.perception.method)
         finished = False
@@ -106,6 +110,10 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
                     docks.append(_dock_report(event.station, data.time, x, y, yaw))
                 elif event.kind == "assembly_done":
                     line.events.assembly_done(data.time, event.station, event.kit_id)
+                elif event.kind == "stop_command":
+                    line.events.stop_command(data.time)
+                elif event.kind == "resume":
+                    line.events.resume(data.time)
             robot.events.clear()
             if recorder.due(data.time):
                 recorder.sample(data)
@@ -124,6 +132,7 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
                                        or model.body(model.geom_bodyid[other]).name)
             if recorder_video is not None:
                 recorder_video.frame(data, robot.mode.value, robot.station, frame.camera)
+            fault.tick(model, data, robot, line)
             if on_tick is not None and on_tick(model, data, robot) is False:
                 log.info("t=%.2f run stopped by the caller", data.time)
                 break
@@ -132,6 +141,9 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
         counts, kits = line.counts(), [dict(k) for k in line.kits]
         events = list(line.events.events)
         commands = line.plc.command_ledger()
+        fault.write_files(out)
+        fault_report = fault.report()
+    fault.close()
     sensors.close()
     if recorder_video is not None:
         recorder_video.close()
@@ -167,6 +179,7 @@ def run(scenario: str = "nominal", out_dir: str | Path | None = None, seed: int 
         "robot_attempts": robot.attempts,
         "line_commands_applied": len(commands),
         "starter_checker": {**verdict, "note": "systems-check verifies log consistency only"},
+        **fault_report,
         "events_file": str(out / "events.jsonl"),
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2, default=float))
