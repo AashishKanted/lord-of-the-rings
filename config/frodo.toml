@@ -266,7 +266,7 @@ release_above_seat_m = 0.0544  # ring centre above its seated height at release 
 [manipulation.grasps.outer]
 offset_along_belt_m = 0.0
 offset_toward_belt_m = 0.0025  # puts the strip of the tilted, open pad that is level with the ring on its diameter (found by test)
-offset_up_m = -0.010           # open pads sit ~12 mm above the tool point; brings them 1.5 mm above the tray
+offset_up_m = -0.008           # open pads sit ~12 mm above the tool point; brings them 3.5 mm above the tray
 preshape = 0
 detect_min = 0.02
 detect_max = 0.30
