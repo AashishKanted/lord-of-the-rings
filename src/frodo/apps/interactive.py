@@ -9,10 +9,13 @@ path, for example between the start pose and dock A, or between the docks.
 
 The box is an obstacle the robot does not know about: it is not on the map. The robot only
 learns about it from its lidars, through the safety monitor. The marker above the robot
-shows the safety state: green = free, orange = slowing, red = stopped. The robot waits
-while the box blocks its path and continues when you move the box away (it does not plan
-around it). The safety monitor only governs base motion: a box pushed against the docked
-robot does not stop the arm.
+shows the safety state: green = free, orange = slowing, red = stopped.
+
+- Driving: the robot slows and stops for the box in its path, and continues by itself when
+  you move the box away (it does not plan around it).
+- Working at a station: the box anywhere within 1 m of the robot stops base AND arm, and
+  the stop is latched. Move the box away, then press ENTER (the operator's acknowledge) to
+  let it continue. ENTER while the box is still close is refused.
 
 Same robot software, plant and evidence log as `scripts/run.sh mission`; the run's files
 go to results/interactive/. The box exists only in this app, not in the mission runner.
@@ -48,18 +51,23 @@ class ViewerTick:
 
     def __init__(self, realtime: bool = True):
         self.viewer, self.realtime = None, realtime
+        self._ack = False
         self._wall0 = self._sim0 = None
         self._last_state = None
 
     def __call__(self, model, data, robot) -> bool:
         if self.viewer is None:
             from mujoco import viewer
-            self.viewer = viewer.launch_passive(model, data)
+            self.viewer = viewer.launch_passive(model, data, key_callback=self._key)
             self._base = model.body("base_link").id
             self._wall0, self._sim0 = time.perf_counter(), data.time
             log.info("viewer open: double-click the orange box, then Ctrl + right-drag to move it")
         if not self.viewer.is_running():
             return False
+        if self._ack:
+            self._ack = False
+            log.info("t=%.2f ENTER: operator acknowledge", data.time)
+            robot.operator_acknowledge()
         self._marker(data, robot)
         self.viewer.sync()
         if self.realtime:          # wait if the simulation is ahead of the wall clock
@@ -67,6 +75,10 @@ class ViewerTick:
             if ahead > 0:
                 time.sleep(ahead)
         return True
+
+    def _key(self, keycode: int) -> None:
+        if keycode in (257, 335):          # GLFW Enter, keypad Enter
+            self._ack = True
 
     def _marker(self, data, robot) -> None:
         state = robot.safety.state if robot.safety is not None else None
