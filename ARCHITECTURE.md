@@ -48,12 +48,13 @@ runs in one process and one deterministic loop, with the plant's PLC server on a
 | `frodo/robot/manipulation/` | IK, motion profiles, `ArmController` (stow, pick-and-place cycle) | done |
 | `frodo/robot/plc.py` | Modbus line client with sequence/retry rule | done |
 | `frodo/robot/orchestrator/` | mission mode machine | done (nominal only) |
-| `frodo/robot/safety/` | lidar slow/stop supervisor for the base, with a docking mask | rudimentary: no human-zone latch, arm not supervised |
+| `frodo/robot/safety/` | lidar slow/stop for the base, docking mask, latched work-zone stop of base and arm | done; stops for any object (no person detection) |
 | `frodo/apps/mission.py` | full mission runner | done (nominal scenario) |
 | `frodo/apps/pick_place_demo.py`, `nav_demo.py`, `line_demo.py`, `sensors_demo.py` | single-subsystem demos | done |
 
-Not built yet: sensor-driven perception, the human-zone stop (latched, base and arm),
-human-stop and PLC-retry scenarios.
+Acceptance scenarios live in `frodo/scenarios/` (test equipment: a walking person, a TCP
+relay that drops one acknowledgement). The customer-side evaluator is
+`frodo/plant/evaluator.py`. See `REPORT.md` for results and design decisions.
 
 ## Control tick
 
