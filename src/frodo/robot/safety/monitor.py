@@ -16,10 +16,15 @@ Rules, with distances measured from the edge of the base footprint:
   exempt from the slow/stop distances, but the base still stops if one comes closer than
   ``dock_min_clearance_m``. That lets the base close in on the conveyor without touching it;
 - stale data: no lidar scan for ``scan_timeout_s`` stops the base.
+- work zone (latched): while the robot works at a station, ANY lidar return within
+  ``human_zone_radius_m`` of the footprint, other than that station's own conveyor, latches
+  a stop of base and arm (`check_zone`). The latch stays until the zone is clear AND an
+  operator acknowledges (`acknowledge`). The stops above release by themselves.
 
-Not done yet: the customer's human-zone rule (latched stop of base and arm with explicit
-recovery, within 200 ms) and any reaction of the arm. This is a simulation behaviour, not
-a certified protective function.
+Every object is treated the same: a 2D lidar at 12 cm sees a slice of legs, boxes and
+trolleys alike and cannot tell a person from them, so there is no person detection. That
+would need a 3D lidar (or a camera) and a person detector on its point cloud. This is a
+simulation behaviour, not a certified protective function.
 """
 from __future__ import annotations
 
@@ -44,6 +49,7 @@ class SafetyState:
     stopped: bool
     reason: str = ""
     nearest_m: float | None = None    # nearest relevant return, from the footprint edge
+    latched: bool = False             # work-zone stop: base AND arm, until acknowledged
 
 
 class SafetyMonitor:
@@ -55,12 +61,67 @@ class SafetyMonitor:
         self._scans: dict[str, object] = {}       # latest scan per lidar
         self.state = SafetyState(1.0, False)
         self._clear_since: float | None = None
+        self._latch: str | None = None        # reason of the active work-zone stop
+        self.zone_clear = True                # last work-zone check found nothing
+
+    # ---- work-zone stop (latched) ----
+    @property
+    def latched(self) -> bool:
+        return self._latch is not None
+
+    def check_zone(self, frame: SensorFrame, station: StationFrame | None) -> bool:
+        """Call every tick. ``station``: where the robot is working (None in transit, when
+        the zone rule does not apply). Returns True while the stop is latched."""
+        for scan in frame.lidars:
+            self._scans[scan.name] = scan
+        if station is None:
+            self.zone_clear = True
+            return self.latched
+        reason = self._zone_intruder(frame.t, station)
+        self.zone_clear = reason is None
+        if reason is not None and self._latch is None:
+            self._latch = reason
+            log.warning("t=%.2f SAFETY STOP (latched, base and arm): %s", frame.t, reason)
+        if self.latched:
+            self.state = SafetyState(0.0, True, self._latch, latched=True)
+        return self.latched
+
+    def acknowledge(self, t: float) -> bool:
+        """Operator recovery. Refused while anything is still inside the zone."""
+        if self._latch is None:
+            return True
+        if not self.zone_clear:
+            log.warning("t=%.2f acknowledge refused: the work zone is still occupied", t)
+            return False
+        log.info("t=%.2f safety stop acknowledged, zone clear: resuming", t)
+        self._latch = None
+        self.state = SafetyState(1.0, False)
+        return True
+
+    def _zone_intruder(self, t: float, station: StationFrame) -> str | None:
+        cfg = self.cfg
+        scans = list(self._scans.values())
+        if not scans or any(t - scan.t > cfg.scan_timeout_s for scan in scans) \
+                or len(scans) < len(self._lidar.mounts):
+            return "lidar data missing or stale"
+        points = scan_points_in_base(scans, self._min_range, self._lidar.range_max_m)
+        if len(points) == 0:
+            return None
+        points = points[~self._inside_conveyor(points, station)]   # the station itself
+        edge = self._edge_distance(points)
+        inside = edge < cfg.human_zone_radius_m
+        if inside.sum() < cfg.zone_min_points:
+            return None
+        return (f"object {1e3 * edge[inside].min():.0f} mm from the base inside the "
+                f"{cfg.human_zone_radius_m:.1f} m work zone")
 
     def filter(self, frame: SensorFrame, wanted: RobotCommand,
                dock_mask: StationFrame | None = None) -> tuple[RobotCommand, SafetyState]:
         """Return the command that is allowed, and why it was changed (if it was)."""
         for scan in frame.lidars:
             self._scans[scan.name] = scan
+        if self.latched:
+            return replace(wanted, base=Twist2D()), self.state
         # Hysteresis: once stopped, the obstacle has to be `clear_hysteresis_m` further away
         # for `clear_time_s` before motion resumes, so range noise cannot make the base creep.
         held = self.state.stopped

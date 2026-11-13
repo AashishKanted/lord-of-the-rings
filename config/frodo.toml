@@ -170,7 +170,8 @@ motion_epsilon_mps = 0.002     # commands below these are "not moving" and are n
 motion_epsilon_radps = 0.005
 dock_mask_margin_m = 0.05      # while docking, returns within the conveyor outline + this are expected
 dock_min_clearance_m = 0.15    # ... but the base still stops if the conveyor is closer than this
-human_zone_radius_m = 1.0 # customer rule: person within 1 m of the base footprint (not implemented yet)
+human_zone_radius_m = 1.0 # work zone: anything within this of the footprint while docked latches a stop
+zone_min_points = 3       # lidar returns needed inside the zone (single noisy returns are ignored)
 max_stop_latency_s = 0.2
 
 [perception]
@@ -233,6 +234,10 @@ place_timeout_s = 4.0     # release anyway after this long centring (will likely
 release_settle_s = 0.30   # wait after opening before retreating
 retreat_up_m = 0.08       # retreat: tool this far above the neck top ...
 retreat_back_m = 0.05     #   ... and this far back toward the robot
+putback_clearance_m = 0.002   # giving a kit up: ring released this far above its nest
+stop_clearance_m = 0.02   # safety stop: tool rises to carrying height + this, clear of passing bottles
+stop_retract_speed_mps = 0.6   # ... at up to this speed
+stop_retract_accel_mps2 = 3.0
 # -- arm safety limits --
 # Workspace box for the tool target, in station coordinates (x along the belt, y across it
 # toward the robot's side, origin at the conveyor centre). Targets outside are clamped.
@@ -278,6 +283,7 @@ leave_policy = "after_accepted"
 plc_poll_hz = 10.0        # line-controller register polling rate
 pick_window_local_x_m = [-0.33, 0.0]   # a cycle may start while the bottle is inside this
 done_margin_m = 0.005     # ASSEMBLY_DONE is only reported this far before the work exit
+resume_max_local_x_m = 0.10   # after a stop, a kit whose bottle is further downstream is given up
 time_limit_s = 300.0      # the mission runner gives up after this long
 sample_period_s = 0.05    # evidence motion samples (customer minimum is 10 Hz)
 
@@ -295,3 +301,20 @@ release_phase_range_s = [0.0, 1.0]  # ACCEPTANCE.md: first release this long aft
 ring_tray_contact_segments = 12   # of the ring's 48 collision segments, how many touch a tray
 seat_raw_log = true               # per-step seat samples (seat_samples.jsonl) for hold recompute
 demo_duration_s = 60.0            # plant-only demo length (line_demo)
+
+# ---- acceptance scenarios (frodo.scenarios): test equipment, not robot software ----
+[scenarios.human_stop]
+station = "A"
+kit_id = 2                    # the person comes in while this kit's ring is being moved
+enter_after_arrival_s = 2.6   # ... crossing into the work zone this long after the kit entered the window
+duration_s = 3.0              # time inside the work zone: 2.05-3.95 (customer rule 2-4 s, kept off the edges)
+walk_speed_mps = 1.0
+start_side_m = 2.6            # starts this far to the robot's left (outside the zone) ...
+stand_side_m = 0.75           # ... and stops this far to its left (inside the zone)
+offset_back_m = 0.2           # ... on a line this far behind the robot centre (away from the belt)
+ack_delay_s = 0.5             # operator acknowledges this long after the person has left
+time_limit_s = 360.0          # customer limit for fault runs
+
+[scenarios.plc_retry]
+drop_nth_done = 2             # the 2nd ASSEMBLY_DONE: applied by the line, acknowledgement lost
+time_limit_s = 360.0

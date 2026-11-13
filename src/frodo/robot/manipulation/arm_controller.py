@@ -60,9 +60,13 @@ class ArmPhase(Enum):
     RETREAT = "retreat"
     RETURN = "return"
     STOWING = "stowing"
+    PUTBACK = "putback"        # giving a kit up: carry the held ring back over its nest ...
+    PUTDOWN = "putdown"        # ... and lower it there
 
 
 CARRYING = (ArmPhase.LIFT, ArmPhase.TRANSFER, ArmPhase.LOWER)
+CYCLE_PHASES = (ArmPhase.PREGRASP, ArmPhase.DESCEND, ArmPhase.CLOSE, *CARRYING,
+                ArmPhase.PUTBACK, ArmPhase.PUTDOWN, ArmPhase.RELEASE, ArmPhase.RETREAT)
 
 
 @dataclass
@@ -107,6 +111,9 @@ class ArmController:
         self._reference = "base"        # what `_origin` rides on: "base", "ring" or "bottle"
         self._phase_t0 = 0.0
         self._last_gripper = 0.0
+        self._gripper_cmd = self._open_cmd = self.m.grasps[self.m.grasp].preshape / 255.0
+        self._putting_back = False
+        self._stop = None                       # (slew, target) of a safety stop in progress
         self._blocked_s, self._limit_warned = 0.0, False
         self._tcp_history: deque[tuple[float, np.ndarray]] = deque()
         self._looks: list[np.ndarray] = []
@@ -128,6 +135,8 @@ class ArmController:
         q = self.model.qpos0.copy()
         q[[self.model.joint(j).qposadr[0] for j in ARM_JOINTS]] = ARM_HOME
         self.ik, self.fk = ArmIK(self.model, q, rot), ArmFK(self.model, rot)
+        # tool height that keeps the fingers clear of passing bottle tops (safety stop)
+        self._safe_z = KIT_TOP_Z + NECK_TOP + self.m.carry_clearance_m + self.m.stop_clearance_m
         # Tool point relative to the ring centre at the grasp. The tool point is where the
         # pads meet when closed; on an open 2F-85 the pads sit higher and further out, which
         # the per-grasp offsets account for.
@@ -175,14 +184,73 @@ class ArmController:
         if self.phase is not ArmPhase.WAITING:
             raise RuntimeError(f"cannot begin a cycle from {self.phase}")
         self.cycle = CycleResult(track_id, t)
+        self._putting_back = False
         self._grasp_offset, self._trim, self._centred_s = np.zeros(3), np.zeros(3), 0.0
         self._gripped_ticks, self._blocked_s, self._limit_warned = 0, 0.0, False
         self._looks: list[np.ndarray] = []      # measured tool-to-ring offsets, ring in hand
         self._enter(ArmPhase.PREGRASP, t)
 
+    # ---- safety stop ----
+    def hold(self, dt: float) -> ArmCommand:
+        """Safety stop. The belt keeps running, so a tool that is low over the kits would be
+        hit by the next bottle: it first rises straight up (fast, finished well inside the
+        1 s settle limit) to clear the bottle tops, then holds still. A tool that is already
+        high just holds. The controller's own state does not advance meanwhile."""
+        if self._stop is None:
+            tcp = self.ik.tcp()
+            low = self.phase in CYCLE_PHASES and tcp[2] < self._safe_z
+            self._stop = (Slew(tcp, self.m.stop_retract_speed_mps, self.m.stop_retract_accel_mps2),
+                          np.array([tcp[0], tcp[1], self._safe_z]) if low else None)
+        slew, target = self._stop
+        if target is not None and np.linalg.norm(slew.p - target) > REACHED_M:
+            self._q_cmd = self.ik.step(self._limit(slew.step(target, dt)), dt)
+        return ArmCommand(self._q_cmd.copy(), self._gripper_cmd)
+
+    @property
+    def needs_grasp(self) -> bool:
+        """In a cycle, but the ring is not held yet."""
+        return self.phase in (ArmPhase.PREGRASP, ArmPhase.DESCEND, ArmPhase.CLOSE)
+
+    def resume(self, t: float) -> None:
+        """Continue after a stop. The kit kept moving (and the tool may have risen), so the
+        setpoint is re-anchored where the arm is now and moves on at the normal limits. A
+        ring that was being lowered goes back to centring above the bottle first."""
+        if self.cycle is not None and self._slew is not None:
+            self._slew.p = self.ik.tcp() - self._origin
+            self._reference = "stale"         # next `_follow` keeps the commanded point
+            self._slew.speed = 0.0
+            if self.phase is ArmPhase.LOWER:
+                self._trim, self._centred_s = np.zeros(3), 0.0
+                self._enter(ArmPhase.TRANSFER, t)
+        self._stop = None
+        self._phase_t0, self._blocked_s = t, 0.0
+
+    def abandon(self, t: float, reason: str) -> None:
+        """Give up the current kit (for example: too far downstream after a stop). A held
+        ring is put back on its nest; otherwise the tool lifts clear of the kit. No
+        ASSEMBLY_DONE follows; the plant rejects the kit at inspection."""
+        if self.cycle is None or self.phase not in CYCLE_PHASES or self._putting_back \
+                or self.cycle.released_t is not None:     # nothing left to give up
+            return
+        log.warning("t=%.2f giving up kit (track %d) in %s: %s", t, self.cycle.track_id,
+                    self.phase.value, reason)
+        self.cycle.failure = reason
+        self._putting_back = True
+        if self.phase in CARRYING:
+            self._enter(ArmPhase.PUTBACK, t)
+        else:                                  # not holding it yet: straight up, then home
+            self._grasp_offset = self._grasp_from_ring.copy()
+            self._enter(ArmPhase.RETREAT, t)
+
     # ---- per-tick ----
     def step(self, joints: JointState, obs: KitObservation | None, t: float,
              dt: float) -> ArmCommand:
+        command = self._step(joints, obs, t, dt)
+        self._gripper_cmd = command.gripper
+        return command
+
+    def _step(self, joints: JointState, obs: KitObservation | None, t: float,
+              dt: float) -> ArmCommand:
         self.released_event = False
         gripper_rate = (joints.gripper - self._last_gripper) / dt
         self._last_gripper = joints.gripper
@@ -317,11 +385,29 @@ class ArmController:
                         self.cycle.released_t, self.cycle.release_radial_m = t, radial
                         self.released_event = True
                         self._enter(ArmPhase.RELEASE, t)
+        elif phase is ArmPhase.PUTBACK:       # over the ring's nest at carrying height
+            command.gripper = self._closed
+            goal = RING_AHEAD_OF_BOTTLE * belt + [0, 0, NECK_TOP + m.carry_clearance_m] \
+                + self._grasp_offset
+            if self._at(goal):
+                self._enter(ArmPhase.PUTDOWN, t)
+        elif phase is ArmPhase.PUTDOWN:       # lower onto the tray, then let go (no DONE)
+            command.gripper = self._closed
+            goal = RING_AHEAD_OF_BOTTLE * belt + [0, 0, _R["thickness_m"] / 2
+                                                  + m.putback_clearance_m] + self._grasp_offset
+            if self._at(goal):
+                self._enter(ArmPhase.RELEASE, t)
         elif phase is ArmPhase.RELEASE:
             goal = self._slew.p
             command.release_grasp = True
             if in_phase > m.release_settle_s:
                 self._enter(ArmPhase.RETREAT, t)
+        elif self._putting_back:   # RETREAT after giving up: straight up from the ring's nest
+            goal = RING_AHEAD_OF_BOTTLE * belt + [0, 0, NECK_TOP + m.retreat_up_m] \
+                + self._grasp_offset
+            if self._at(goal):
+                self._follow("base", np.zeros(3))
+                self._enter(ArmPhase.RETURN, t)
         else:   # RETREAT: straight up and back from the bottle, still moving with the belt
             goal = np.array([0, 0, NECK_TOP + m.retreat_up_m]) + self._grasp_offset \
                 - m.retreat_back_m * self._toward_belt

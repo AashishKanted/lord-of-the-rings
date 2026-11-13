@@ -42,7 +42,7 @@ LEAVE_POLICIES = ("after_accepted", "after_done")
 @dataclass(frozen=True)
 class RobotEvent:
     """Something the robot did that the mission runner records as evidence."""
-    kind: str               # "dock" | "assembly_done"
+    kind: str               # "dock" | "assembly_done" | "stop_command" | "resume"
     station: str
     kit_id: int | None = None
 
@@ -75,6 +75,11 @@ class Orchestrator:
         self._pending: deque[int] = deque()       # arrived kit ids waiting for the arm
         self._current: dict | None = None         # attempt in progress
         self._handled: set[int] = set()           # perception tracks already worked on
+        self._ack_requested = False               # operator pressed "acknowledge"
+
+    def operator_acknowledge(self) -> None:
+        """The operator's acknowledge button (explicit recovery after a work-zone stop)."""
+        self._ack_requested = True
 
     # ---- line bookkeeping ----
     def _accepted(self, station: str) -> int:
@@ -139,6 +144,11 @@ class Orchestrator:
         pose = self.localizer.update(frame)
         self._poll(t)
         base, arm = Twist2D(), None
+        if self.safety is not None and self._zone_stop(frame, t):
+            if self.mode is Mode.MANIPULATE:
+                self.perception.update(frame)      # keep tracking the moving kits
+            hold = self.arm.hold(self.dt)
+            return RobotCommand(base=Twist2D(), arm_q=hold.arm_q, gripper=hold.gripper)
 
         if self.mode is Mode.IDLE:
             self._head_for(self._goal(), t)
@@ -161,6 +171,36 @@ class Orchestrator:
             mask = StationFrame.from_pose(self.station, pose) if self.mode is Mode.DOCK else None
             command, _ = self.safety.filter(frame, command, mask)
         return command
+
+    def _zone_stop(self, frame: SensorFrame, t: float) -> bool:
+        """Latched work-zone stop while working at a station. True while stopped."""
+        working = self.mode in (Mode.MANIPULATE, Mode.STOW)
+        was = self.safety.latched
+        latched = self.safety.check_zone(frame, self.station_frame if working else None)
+        if latched and not was:
+            self.events.append(RobotEvent("stop_command", self.station))
+        if latched and self._ack_requested:
+            self._ack_requested = False
+            if self.safety.acknowledge(t):
+                self.events.append(RobotEvent("resume", self.station))
+                self._after_stop(t)
+                return False
+        return latched
+
+    def _after_stop(self, t: float) -> None:
+        """Resume the interrupted kit if there is still time to finish it inside the work
+        window; otherwise give it up (it will be rejected downstream and replaced)."""
+        self.arm.resume(t)
+        if self._current is None or self.arm.cycle is None:
+            return
+        obs = self.perception.get(self._current["track_id"])
+        limit = self.mission.resume_max_local_x_m
+        if self.arm.needs_grasp:
+            self.arm.abandon(t, "stopped before the ring was gripped")
+        elif obs is None or self.station_frame.local_x(obs.bottle_in_base) > limit:
+            self.arm.abandon(t, "kit too far downstream to finish after the stop")
+        else:
+            log.info("t=%.2f re-acquired kit %d after the stop", t, self._current["kit_id"])
 
     def _set_mode(self, mode: Mode, t: float) -> None:
         if mode is not self.mode:
